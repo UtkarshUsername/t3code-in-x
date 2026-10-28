@@ -161,7 +161,7 @@ export function createReplayPlayer(
       schedule(advance, 110);
     };
     let answers = "";
-    const finish = (answer: string, success = true) => {
+    const finish = (answer: string) => {
       const current = getThread(id);
       const item = assistantItem(id, runId, `${runId}-assistant`, current.items.length, "", true);
       stream(
@@ -169,7 +169,7 @@ export function createReplayPlayer(
         answer,
         () => {
           runStatus("completed");
-          replace({ ...getThread(id), continuation: success ? turn.next : undefined });
+          replace({ ...getThread(id), continuation: turn.next });
           playback.delete(id);
           drain(id);
         },
@@ -191,7 +191,7 @@ export function createReplayPlayer(
       const next = () => schedule(() => advanceStep(index + 1));
       if (step.type === "reasoning" && item.type === "reasoning") {
         stream(item, step.text, next);
-      } else if (item.type === "approval_request" || item.type === "user_input_request") {
+      } else if (item.type === "user_input_request") {
         const pending = {
           ...item,
           nodeId: NodeId.make(`${runId}-node`),
@@ -209,7 +209,7 @@ export function createReplayPlayer(
               nodeId: pending.nodeId,
               providerTurnId: null,
               nativeRequestRef: null,
-              kind: item.type === "approval_request" ? item.requestKind : "user_input",
+              kind: "user_input",
               status: "pending",
               responseCapability: {
                 type: "live",
@@ -222,10 +222,7 @@ export function createReplayPlayer(
         });
         runStatus("waiting");
         state.resume = (response) => {
-          if (item.type === "approval_request" && response.decision === undefined)
-            throw new Error("Choose whether to allow this simulated edit.");
           if (
-            item.type === "user_input_request" &&
             item.questions.some(
               (question) =>
                 question.required &&
@@ -235,8 +232,6 @@ export function createReplayPlayer(
           )
             throw new Error("Answer the question before continuing.");
           state.resume = undefined;
-          const accepted =
-            item.type !== "approval_request" || response.decision?.startsWith("accept");
           const resolvedAt = DateTime.nowUnsafe();
           const current = getThread(id);
           replace({
@@ -247,7 +242,6 @@ export function createReplayPlayer(
                     ...request,
                     status: "resolved",
                     resolvedAt,
-                    ...(response.decision ? { decision: response.decision } : {}),
                     ...(response.answers ? { answers: response.answers } : {}),
                   }
                 : request,
@@ -255,20 +249,13 @@ export function createReplayPlayer(
           });
           put({
             ...pending,
-            status: accepted ? "completed" : "cancelled",
+            status: "completed",
             completedAt: resolvedAt,
           });
           runStatus("running");
-          if (!accepted) {
-            finish(
-              "You declined the simulated edit. No files were changed. Send another message to explore a new scenario.",
-              false,
-            );
-          } else {
-            if (response.answers)
-              answers = `\n\nYour answer:\n\n\`\`\`json\n${JSON.stringify(response.answers, null, 2)}\n\`\`\``;
-            next();
-          }
+          if (response.answers)
+            answers = `\n\nYour answer:\n\n\`\`\`json\n${JSON.stringify(response.answers, null, 2)}\n\`\`\``;
+          next();
         };
       } else if (step.type === "plan") {
         put(item);

@@ -45,10 +45,10 @@ export const demoCapabilities = {
   approvals: {
     supportsCommandApproval: false,
     supportsFileReadApproval: false,
-    supportsFileChangeApproval: true,
+    supportsFileChangeApproval: false,
     supportsApplyPatchApproval: false,
-    approvalsHaveNativeRequestIds: true,
-    approvalCallbacksAreLiveOnly: true,
+    approvalsHaveNativeRequestIds: false,
+    approvalCallbacksAreLiveOnly: false,
     approvalsCanOriginateFromSubagents: false,
   },
   planning: {

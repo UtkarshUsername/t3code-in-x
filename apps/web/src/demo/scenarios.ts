@@ -6,7 +6,6 @@ export type DemoStep =
   | { type: "plan"; steps: readonly string[]; current: number }
   | { type: "edit"; file: string; diff: string }
   | { type: "command"; input: string; output: string; exitCode?: number }
-  | { type: "approval"; prompt: string }
   | { type: "question"; questions: readonly OrchestrationV2UserInputQuestion[] };
 
 export interface DemoTurn {
@@ -94,21 +93,16 @@ export const scenarios: readonly DemoScenario[] = [
   })),
   {
     id: "migration",
-    name: "Approve a migration",
-    prompt: "Add an updated-at index to the notes schema, but ask before changing it.",
-    introduction: "I'll inspect the schema and ask before applying the migration.",
+    name: "Apply a migration",
+    prompt: "Add an updated-at index to the notes schema.",
+    introduction: "I'll inspect the schema, add the index, and run the migration checks.",
     steps: [
       { type: "read", path: "src/schema.ts" },
-      {
-        type: "approval",
-        prompt:
-          "Add the notes.updatedAt index to src/schema.ts? This is a simulated edit in the demo workspace.",
-      },
       migration,
       command("vp test run src/schema.test.ts"),
     ],
     answer:
-      "Added the **updated-at index** after your approval. The simulated migration checks pass.\n\nNo real files or database were changed.",
+      "Added the **updated-at index**. The simulated migration checks pass.\n\nNo real files or database were changed.",
   },
   {
     id: "question",

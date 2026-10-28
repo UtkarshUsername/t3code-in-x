@@ -119,7 +119,7 @@ function replayActivityItems(
 ) {
   const items: OrchestrationV2TurnItem[] = [];
   for (const step of scenario.steps) {
-    if (step.type === "approval" || step.type === "question") break;
+    if (step.type === "question") break;
     const item = replayStepItem(threadId, runId, ordinal + items.length, step, at);
     const existing = items.findIndex((candidate) => candidate.id === item.id);
     if (existing === -1) items.push(item);
@@ -177,19 +177,6 @@ export function replayStepItem(
         output: step.output,
         exitCode: step.exitCode ?? 0,
         status: step.exitCode ? "failed" : "completed",
-      };
-    case "approval":
-      return {
-        ...common,
-        type: "approval_request",
-        requestId: RuntimeRequestId.make(common.id),
-        requestKind: "file-change",
-        prompt: step.prompt,
-        fullAccessOverride: "ask_rule",
-        options: [
-          { decision: "accept", label: "Allow once" },
-          { decision: "decline", label: "Decline" },
-        ],
       };
     case "question":
       return {

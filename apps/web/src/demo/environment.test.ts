@@ -298,20 +298,7 @@ it.effect("cycles through every scenario, preserves continuations, and wraps to 
                   expect(isProjection(waiting), scenario.id).toBe(true);
                   expect(isShell(environment.snapshot()), scenario.id).toBe(true);
                   const requests = derivePendingThreadRequests(waiting);
-                  for (const approval of requests.approvals) {
-                    expect(approval.responseCapability).toBe("live");
-                    const latestRun = environment.getThread(DEMO_THREAD_ID).runs.at(-1)!;
-                    expect(
-                      waiting.turnItems
-                        .filter((item) => item.runId === latestRun.id)
-                        .some((item) => item.type === "file_change"),
-                    ).toBe(false);
-                    yield* dispatch({
-                      type: "runtime-request.respond",
-                      requestId: approval.requestId,
-                      decision: "accept",
-                    });
-                  }
+                  expect(requests.approvals).toEqual([]);
                   for (const question of requests.userInputs) {
                     expect(question.responseCapability).toBe("live");
                     const invalid = yield* Effect.exit(
@@ -433,68 +420,57 @@ it.effect("cycles through every scenario, preserves continuations, and wraps to 
   }),
 );
 
-it.effect(
-  "declines and cancels pending requests without applying an edit or resuming stale work",
-  () =>
-    Effect.gen(function* () {
-      vi.useFakeTimers();
-      const index = scenarios.findIndex((scenario) => scenario.id === "migration");
-      const environment = createDemoEnvironment(index);
-      const dispatch = (input: Record<string, unknown>) =>
-        environment.dispatch({
-          commandId: CommandId.make("approval-lifecycle"),
-          threadId: DEMO_THREAD_ID,
-          ...input,
-        });
-      const send = () =>
+it.effect("cancels pending questions without resuming stale work", () =>
+  Effect.gen(function* () {
+    vi.useFakeTimers();
+    const index = scenarios.findIndex((scenario) => scenario.id === "question");
+    const environment = createDemoEnvironment(index);
+    const dispatch = (input: Record<string, unknown>) =>
+      environment.dispatch({
+        commandId: CommandId.make("question-lifecycle"),
+        threadId: DEMO_THREAD_ID,
+        ...input,
+      });
+    const send = () =>
+      dispatch({
+        type: "message.dispatch",
+        messageId: MessageId.make("question-message"),
+        text: "Go",
+        attachments: [],
+        createdBy: "user",
+        creationSource: "web",
+        dispatchMode: { type: "start_immediately" },
+      });
+    try {
+      yield* send();
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      const first = environment.getThread(DEMO_THREAD_ID).requests!.at(-1)!;
+      expect(
+        environment.snapshot().threads.find((thread) => thread.id === DEMO_THREAD_ID)
+          ?.pendingRuntimeRequest?.id,
+      ).toBe(first.id);
+      yield* dispatch({ type: "thread.stop" });
+      const stopped = environment.snapshot().snapshotSequence;
+      const stale = yield* Effect.exit(
         dispatch({
-          type: "message.dispatch",
-          messageId: MessageId.make("approval-message"),
-          text: "Go",
-          attachments: [],
-          createdBy: "user",
-          creationSource: "web",
-          dispatchMode: { type: "start_immediately" },
-        });
-      try {
-        yield* send();
-        yield* Effect.promise(() => vi.runAllTimersAsync());
-        const first = environment.getThread(DEMO_THREAD_ID).requests!.at(-1)!;
-        expect(
-          environment.snapshot().threads.find((thread) => thread.id === DEMO_THREAD_ID)
-            ?.pendingRuntimeRequest?.id,
-        ).toBe(first.id);
-        yield* dispatch({
           type: "runtime-request.respond",
           requestId: first.id,
-          decision: "decline",
-        });
-        yield* Effect.promise(() => vi.runAllTimersAsync());
-        const declined = environment.getThread(DEMO_THREAD_ID);
-        expect(
-          declined.items
-            .filter((item) => item.runId === declined.runs.at(-1)?.id)
-            .some((item) => item.type === "file_change"),
-        ).toBe(false);
-        expect(declined.requests!.at(-1)?.decision).toBe("decline");
-        yield* send();
-        yield* Effect.promise(() => vi.runAllTimersAsync());
-        const second = environment.getThread(DEMO_THREAD_ID).requests!.at(-1)!;
-        yield* dispatch({ type: "thread.stop" });
-        const stopped = environment.snapshot().snapshotSequence;
-        const stale = yield* Effect.exit(
-          dispatch({ type: "runtime-request.respond", requestId: second.id, decision: "accept" }),
-        );
-        expect(Exit.isFailure(stale)).toBe(true);
-        yield* Effect.promise(() => vi.runAllTimersAsync());
-        expect(environment.snapshot().snapshotSequence).toBe(stopped);
-        expect(environment.getThread(DEMO_THREAD_ID).requests!.at(-1)?.status).toBe("cancelled");
-        expect(environment.getThread(DEMO_THREAD_ID).runs.at(-1)?.status).toBe("interrupted");
-      } finally {
-        environment.dispose();
-        vi.useRealTimers();
-      }
-    }),
+          answers: { "test-focus": "Editor interactions" },
+        }),
+      );
+      expect(Exit.isFailure(stale)).toBe(true);
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      expect(environment.snapshot().snapshotSequence).toBe(stopped);
+      expect(environment.getThread(DEMO_THREAD_ID).requests!.at(-1)?.status).toBe("cancelled");
+      expect(environment.getThread(DEMO_THREAD_ID).runs.at(-1)?.status).toBe("interrupted");
+      yield* send();
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      expect(environment.getThread(DEMO_THREAD_ID).runs.at(-1)?.status).toBe("completed");
+    } finally {
+      environment.dispose();
+      vi.useRealTimers();
+    }
+  }),
 );
 
 it.effect("serves files and diffs locally and rejects unsupported execution immediately", () =>
@@ -659,7 +635,7 @@ it.effect(
         ).toEqual(scenarios.slice(1, 3).map((scenario) => scenario.answer));
         yield* send("next after idle", { type: "start_immediately" });
         yield* Effect.promise(() => vi.runAllTimersAsync());
-        expect(environment.getThread(DEMO_THREAD_ID).requests?.at(-1)?.status).toBe("pending");
+        expect(environment.getThread(DEMO_THREAD_ID).runs.at(-1)?.status).toBe("completed");
       } finally {
         environment.dispose();
         vi.useRealTimers();
@@ -726,14 +702,8 @@ it.effect("promotes queued work, holds it on stop, and supports send-now and res
       yield* Effect.promise(() => vi.runAllTimersAsync());
       const waiting = environment.getThread(DEMO_THREAD_ID);
       expect(waiting.runs.at(-1)?.userMessageId).toBe("last");
-      expect(waiting.requests?.at(-1)?.status).toBe("pending");
+      expect(waiting.runs.at(-1)?.status).toBe("completed");
       expect(isProjection(projectionOf(waiting))).toBe(true);
-      yield* dispatch({
-        type: "runtime-request.respond",
-        requestId: waiting.requests!.at(-1)!.id,
-        decision: "decline",
-      });
-      yield* Effect.promise(() => vi.runAllTimersAsync());
       expect(
         deriveThreadQueueWorkflowState(projectionOf(environment.getThread(DEMO_THREAD_ID)))
           .queuedRuns,
