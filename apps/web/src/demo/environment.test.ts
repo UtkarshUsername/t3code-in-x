@@ -43,6 +43,10 @@ it.effect("launches an independent thread and completes a replay with tools and 
         ).filter(isProviderInstancePickerReady);
         expect(selectable.map((entry) => entry.instanceId)).toContain(MODEL.instanceId);
       }
+      const seeded = environment.getThread(DEMO_THREAD_ID).items;
+      expect(seeded.findIndex((item) => item.type === "file_change")).toBeLessThan(
+        seeded.findIndex((item) => item.type === "assistant_message"),
+      );
       const id = ThreadId.make("visitor-thread");
       const result = yield* environment.launch({
         commandId: CommandId.make("launch-1"),
@@ -70,6 +74,16 @@ it.effect("launches an independent thread and completes a replay with tools and 
       yield* Effect.promise(() => vi.runAllTimersAsync());
       const completed = environment.getThread(id);
       expect(completed.runs.at(-1)?.status).toBe("completed");
+      const responseIndex = completed.items.findIndex((item) => item.type === "assistant_message");
+      expect(completed.items.findIndex((item) => item.type === "command_execution")).toBeLessThan(
+        responseIndex,
+      );
+      expect(completed.items.findIndex((item) => item.type === "file_change")).toBeLessThan(
+        responseIndex,
+      );
+      expect(completed.items.map((item) => item.ordinal)).toEqual(
+        completed.items.map((item) => item.ordinal).toSorted((a, b) => a - b),
+      );
       expect(
         completed.items.some((item) => item.type === "command_execution" && item.exitCode === 0),
       ).toBe(true);

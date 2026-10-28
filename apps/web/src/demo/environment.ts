@@ -18,7 +18,6 @@ import {
   WsRpcGroup,
   type OrchestrationV2ShellStreamItem,
   type OrchestrationV2ThreadStreamItem,
-  type OrchestrationV2TurnItem,
   type OrchestrationV2ShellSnapshot,
 } from "@t3tools/contracts";
 import type {
@@ -46,6 +45,7 @@ import {
   projectionOf,
   userItem,
   assistantItem,
+  replayActivityItems,
   run,
   type DemoThread,
 } from "./fixtures";
@@ -230,8 +230,16 @@ export function createDemoEnvironment() {
       updatedAt: startedAt,
       completedAt: startedAt,
     };
+    const activity = replayActivityItems(id, runId, thread.items.length + 1, scenario, startedAt);
     const agent = {
-      ...assistantItem(id, runId, `${runId}-assistant`, thread.items.length + 1, "", true),
+      ...assistantItem(
+        id,
+        runId,
+        `${runId}-assistant`,
+        thread.items.length + activity.length + 1,
+        "",
+        true,
+      ),
       startedAt,
       updatedAt: startedAt,
     };
@@ -249,7 +257,7 @@ export function createDemoEnvironment() {
       settled: false,
       metadata: { ...thread.metadata, updatedAt: startedAt, latestUserMessageAt: startedAt },
       runs: [...thread.runs, replayRun],
-      items: [...thread.items, user, agent],
+      items: [...thread.items, user, ...activity, agent],
     });
     const words = (scenario.introduction + "\n\n" + scenario.answer).match(/\S+\s*/g) ?? [];
     let position = 0;
@@ -260,7 +268,7 @@ export function createDemoEnvironment() {
       textSoFar = words.slice(0, position).join("");
       const done = position >= words.length;
       const current = getThread(id);
-      let items = current.items.map((item) =>
+      const items = current.items.map((item) =>
         item.id === agent.id
           ? {
               ...agent,
@@ -271,36 +279,6 @@ export function createDemoEnvironment() {
             }
           : item,
       );
-      if (done) {
-        items = [
-          ...items,
-          {
-            ...agent,
-            id: `${runId}-command` as typeof agent.id,
-            ordinal: agent.ordinal + 1,
-            type: "command_execution",
-            title: "Run focused tests",
-            input: scenario.command,
-            output: "✓ Focused checks passed (simulated)",
-            exitCode: 0,
-            status: "completed",
-            completedAt: now(),
-          },
-          {
-            ...agent,
-            id: `${runId}-file` as typeof agent.id,
-            ordinal: agent.ordinal + 2,
-            type: "file_change",
-            title: null,
-            fileName: scenario.file,
-            additions: 4,
-            deletions: 1,
-            diffStr: scenario.diff,
-            status: "completed",
-            completedAt: now(),
-          },
-        ] satisfies OrchestrationV2TurnItem[];
-      }
       replace({
         ...current,
         items,

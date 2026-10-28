@@ -96,6 +96,39 @@ export function assistantItem(
   } satisfies OrchestrationV2TurnItem;
 }
 
+export function replayActivityItems(
+  threadId: ThreadId,
+  runId: RunId,
+  ordinal: number,
+  scenario: (typeof scenarios)[number],
+  at = AT,
+) {
+  return [
+    {
+      ...base(threadId, runId, `${runId}-file`, ordinal),
+      startedAt: at,
+      updatedAt: at,
+      completedAt: at,
+      type: "file_change",
+      fileName: scenario.file,
+      additions: 4,
+      deletions: 1,
+      diffStr: scenario.diff,
+    },
+    {
+      ...base(threadId, runId, `${runId}-command`, ordinal + 1),
+      startedAt: at,
+      updatedAt: at,
+      completedAt: at,
+      type: "command_execution",
+      title: "Run focused tests",
+      input: scenario.command,
+      output: "✓ Focused checks passed (simulated)",
+      exitCode: 0,
+    },
+  ] satisfies OrchestrationV2TurnItem[];
+}
+
 export function run(threadId: ThreadId, id: RunId, ordinal: number, userMessageId: string) {
   return {
     id,
@@ -253,26 +286,20 @@ export function createFixtures(): DemoThread[] {
     const threadId = ThreadId.make(id);
     const runId = RunId.make(`${id}-run-1`);
     const selected = scenarios.find((value) => value.id === scenario) ?? scenarios[0]!;
+    const activity = id === "demo-empty" ? [] : replayActivityItems(threadId, runId, 1, selected);
     const items: OrchestrationV2TurnItem[] =
       id === "demo-empty"
         ? []
         : [
             userItem(threadId, runId, `${id}-user`, 0, selected.prompt),
+            ...activity,
             assistantItem(
               threadId,
               runId,
               `${id}-assistant`,
-              1,
+              activity.length + 1,
               selected.introduction + "\n\n" + selected.answer,
             ),
-            {
-              ...base(threadId, runId, `${id}-file`, 2),
-              type: "file_change",
-              fileName: selected.file,
-              additions: 4,
-              deletions: 1,
-              diffStr: selected.diff,
-            },
           ];
     return {
       id: threadId,
