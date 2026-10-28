@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "demo:dev": "vp dev --mode demo",
+    "demo:build": "vp build --mode demo",
+    "demo:preview": "vp preview --mode demo",
     "build:ghostty-wasm": "bash scripts/build-libghostty-wasm.sh",
     "dev": "vp dev",
     "dev:built": "vp build --watch",

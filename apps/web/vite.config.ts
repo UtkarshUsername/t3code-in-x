@@ -22,6 +22,7 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
+import { demoPlugin } from "./vite/demo";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -252,7 +253,8 @@ const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
   .filter((entry) => entry.length > 0);
 const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const demo = mode === "demo";
   return {
     run: {
       tasks: {
@@ -265,6 +267,7 @@ export default defineConfig(() => {
     },
     assetsInclude: ["**/*.wasm"],
     plugins: [
+      demo ? demoPlugin(process.env.DEMO_PUBLIC_URL) : undefined,
       devCompressionPlugin(),
       chunkCycleGuardPlugin(),
       builtDev
@@ -297,6 +300,7 @@ export default defineConfig(() => {
       ],
     },
     define: {
+      "import.meta.env.T3CODE_DEMO": JSON.stringify(demo),
       "import.meta.env.VITE_WS_URL": JSON.stringify(configuredWsUrl ?? ""),
       // Override .env URLs with empty values in single-origin dev so clients use window.location.origin.
       "import.meta.env.VITE_HTTP_URL": JSON.stringify(configuredHttpUrl ?? ""),
@@ -318,6 +322,25 @@ export default defineConfig(() => {
       ),
       "import.meta.env.VITE_RELEASE_CHANNEL": JSON.stringify(configuredReleaseChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      ...(demo
+        ? Object.fromEntries(
+            [
+              "VITE_HTTP_URL",
+              "VITE_WS_URL",
+              "VITE_T3CODE_RELAY_URL",
+              "VITE_CLERK_PUBLISHABLE_KEY",
+              "VITE_CLERK_JWT_TEMPLATE",
+              "VITE_CLERK_CLI_OAUTH_CLIENT_ID",
+              "VITE_RELAY_OTLP_TRACES_URL",
+              "VITE_RELAY_OTLP_TRACES_DATASET",
+              "VITE_RELAY_OTLP_TRACES_TOKEN",
+              "VITE_HOSTED_APP_URL",
+              "VITE_HOSTED_APP_CHANNEL",
+              "VITE_RELEASE_CHANNEL",
+              "T3CODE_DESKTOP_UPDATE_REPOSITORY",
+            ].map((key) => [`import.meta.env.${key}`, JSON.stringify("")]),
+          )
+        : {}),
     },
     resolve: {
       tsconfigPaths: true,
@@ -342,7 +365,7 @@ export default defineConfig(() => {
       warmup: {
         clientFiles: ["./src/main.tsx"],
       },
-      ...(devProxyTarget
+      ...(!demo && devProxyTarget
         ? {
             // Share prefixes with the backend catch-all so the proxy and 404 lists cannot drift.
             proxy: Object.fromEntries(
@@ -373,10 +396,10 @@ export default defineConfig(() => {
       devSourcemap: buildSourcemap !== false,
     },
     build: {
-      outDir: "dist",
+      outDir: demo ? "dist-demo" : "dist",
       emptyOutDir: true,
       manifest: true,
-      sourcemap: buildSourcemap,
+      sourcemap: demo ? false : buildSourcemap,
       rolldownOptions: {
         output: {
           // PDF.js resolves decoder modules and ICC data relative to wasmUrl.

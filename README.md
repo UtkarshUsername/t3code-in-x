@@ -1,142 +1,52 @@
-# T3 Code
+# T3 Code in X
 
-T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+A static, interactive demo of T3 Code. It runs the original React frontend against a small environment in the browser. There is no T3 server, account, provider credential, or AI request.
 
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
+## Run locally
 
-## "Wait, what are you selling me?"
+Use the Node version in `package.json` and [Vite+](https://viteplus.dev).
 
-Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
-
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
-
-## Installation
-
-> [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
-> - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
-> - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
-
-### Command line
-
-```bash
-curl -fsSL https://t3.codes/install.sh | sh
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
-```
-
-Then run `t3` to start the server and open the local web app. `t3 service install` keeps it running in the background, `t3 update` moves to a newer release, and `t3 --help` has the full reference.
-
-To try it once without installing, run `npx t3@latest` instead.
-
-### Desktop app
-
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
-
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### Windows (`scoop`)
-
-```bash
-scoop install extras/t3code
-```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
-
-#### Debian, Ubuntu (`.deb`)
-
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
-
-```bash
-sudo apt install ./T3-Code-*.deb
-```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
-## Some notes
-
-We are very very early in this project. Expect bugs.
-
-We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
-
-## Documentation
-
-Full docs live in [docs/](./docs). There's no docs site yet.
-
-- [FAQ](./docs/user/faq.md)
-- [Install and first run](./docs/user/install.md)
-- [Permission modes](./docs/user/permission-modes.md)
-- [Keyboard shortcuts](./docs/user/keybindings.md)
-- [Project settings](./docs/user/project-settings.md)
-- [Appearance preferences](./docs/user/appearance.md)
-- [Remote access from a phone or another machine](./docs/user/remote-access.md)
-- [Connect Claude Code, Codex, ChatGPT and other agents over MCP](./docs/user/outside-agents.md)
-- [Keeping app and server in sync](./docs/user/updating.md)
-- [Source control integrations](./docs/user/source-control.md)
-- Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
-
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
-
-## If you REALLY want to contribute still.... read this first
-
-### Install `vp`
-
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
-
-#### macOS / Linux
-
-```bash
-curl -fsSL https://vite.plus | bash
-```
-
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
-
-```bash
+```sh
 vp i
+vp run demo:dev
 ```
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
+Open the URL printed by Vite. The two fictional projects include completed, settled, and unfinished conversations. Use the existing model picker to choose **Build a feature**, **Fix a bug**, or **Review changes**. Send messages in those conversations or create a new thread. Responses, tool output, and diffs are scripted.
 
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
+Thread creation, follow-ups, cancellation, renaming, settling/reopening, archiving, deletion, file browsing, and diffs run locally. Operations requiring a real environment, such as shell execution, git pushes, pairing, and provider installation, report that they are unavailable. The frontend components and layout are unchanged.
 
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+All demo state, preferences, and drafts are temporary. Refreshing restores the seeded workspace. There is no persistent database or browser-storage requirement.
+
+## Build and host
+
+```sh
+vp run demo:build
+vp run demo:preview
+```
+
+The deployable directory is **`apps/web/dist-demo`**. Upload that directory to a static host, or connect this repository to Cloudflare Pages with:
+
+- Build command: `vp run demo:build` after installing dependencies with `vp i`.
+- Build output directory: `apps/web/dist-demo`.
+- Repository root as the working directory.
+- Node version matching `package.json`.
+
+The build includes Cloudflare Pages `_headers` and `_redirects` files. It does not need a Worker, API, database, or WebSocket server. The ordinary upstream web build remains separate.
+
+## X Player Card
+
+Set **`DEMO_PUBLIC_URL`** to the deployed HTTPS origin when building, for example `https://your-demo.pages.dev`. This adds server-readable Player Card metadata pointing to the static demo, with a 640 x 480 player and `/demo-preview.png` as its preview image. Rebuild after changing the public URL.
+
+Post the deployed site's URL. The card requests an inline player; X controls whether and where it displays. Test the hosted URL in X before announcing it. The demo can also be used directly in a normal browser tab. This repository does not establish X's policy approval for interactive Player Cards.
+
+## Checks
+
+```sh
+vp test run apps/web/src/demo/environment.test.ts
+vp run --filter @t3tools/web typecheck
+vp run check:changed
+```
+
+## Source and license
+
+Based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code), upstream snapshot `5211acfe95a0c6d82a60e2524b5e46b47fe67a3e`. This is an independent demo repository, not the official hosted T3 Code app. Original copyright and [MIT license](LICENSE) are preserved. The static build retains third-party license notices.

@@ -3,6 +3,7 @@ import {
   createProjectFaviconImageLoader,
   PROJECT_FAVICON_MAX_DATA_URL_LENGTH,
   PROJECT_FAVICON_THUMBNAIL_SIZE,
+  type ProjectFaviconEntry,
 } from "@t3tools/client-runtime/project-favicon-cache";
 
 const DATABASE_NAME = "t3code:project-favicons";
@@ -70,15 +71,27 @@ async function downscaleProjectFavicon(
   }
 }
 
+const demoEntries = new Map<string, ProjectFaviconEntry>();
+
 export const projectFaviconCache = createProjectFaviconCache({
-  storage: {
-    list: async () => (await withStore("readonly", (store) => store.getAll())) ?? [],
-    put: async (key, entry) => {
-      await withStore("readwrite", (store) => store.put(entry, key));
-    },
-    remove: async (key) => {
-      await withStore("readwrite", (store) => store.delete(key));
-    },
-  },
+  storage: import.meta.env.T3CODE_DEMO
+    ? {
+        list: async () => [...demoEntries.values()],
+        put: async (key, entry) => {
+          demoEntries.set(key, entry);
+        },
+        remove: async (key) => {
+          demoEntries.delete(key);
+        },
+      }
+    : {
+        list: async () => (await withStore("readonly", (store) => store.getAll())) ?? [],
+        put: async (key, entry) => {
+          await withStore("readwrite", (store) => store.put(entry, key));
+        },
+        remove: async (key) => {
+          await withStore("readwrite", (store) => store.delete(key));
+        },
+      },
   load: createProjectFaviconImageLoader({ downscale: downscaleProjectFavicon }),
 });

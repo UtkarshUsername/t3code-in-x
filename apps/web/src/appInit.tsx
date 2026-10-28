@@ -156,7 +156,9 @@ export function startAppServices(): AppRouter {
   startProviderAuthDelivery();
 
   // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
-  const router = getRouter(isElectron ? createHashHistory() : createBrowserHistory());
+  const router = getRouter(
+    isElectron || import.meta.env.T3CODE_DEMO ? createHashHistory() : createBrowserHistory(),
+  );
 
   if (isElectron) {
     syncDocumentElectronPlatformClasses(navigator.platform);

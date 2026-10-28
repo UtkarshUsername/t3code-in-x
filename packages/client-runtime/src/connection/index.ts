@@ -3,6 +3,7 @@ export * from "./diagnosis.ts";
 export * as Connectivity from "./connectivity.ts";
 export * as CredentialStore from "./credentialStore.ts";
 export { type ConnectionDriverProgress, type EnvironmentConnectionLease } from "./driver.ts";
+export { ConnectionDriver } from "./driver.ts";
 export * from "./errors.ts";
 export * from "./pullRequestRoutingPermissions.ts";
 export * from "./hostFreeze.ts";

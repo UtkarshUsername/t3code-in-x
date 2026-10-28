@@ -71,8 +71,11 @@ export const watchDiscoveredCompatibility = Effect.fn("connection.watchDiscovere
   },
 );
 
-export function layerWithOptions(options: RpcSession.RpcSessionOptions) {
-  const layerDriver = ConnectionDriver.layer.pipe(
+export function layerWithOptions(
+  options: RpcSession.RpcSessionOptions,
+  driverLayer = ConnectionDriver.layer,
+) {
+  const layerDriver = driverLayer.pipe(
     Layer.provide(Layer.mergeAll(ConnectionResolver.layer, RpcSession.layer(options))),
   );
   const layerRegistry = EnvironmentRegistry.layer.pipe(Layer.provide(layerDriver));

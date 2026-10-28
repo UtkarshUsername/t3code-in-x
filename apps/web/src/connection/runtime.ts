@@ -34,11 +34,20 @@ type ConnectionLayerSource =
 
 const layerProvidedClientConnection = layerSnapshotLoader.pipe(
   Layer.provideMerge(
-    Connection.layerWithOptions({
-      environmentThemes: true,
-      usageLimitSources: true,
-      usageLimitsCommand: true,
-    }),
+    Connection.layerWithOptions(
+      {
+        environmentThemes: true,
+        usageLimitSources: true,
+        usageLimitsCommand: true,
+      },
+      import.meta.env.T3CODE_DEMO
+        ? Layer.unwrap(
+            Effect.promise(() =>
+              import("../demo/environment").then((module) => module.demoDriverLayer),
+            ),
+          )
+        : undefined,
+    ),
   ),
   Layer.provideMerge(
     Layer.mergeAll(

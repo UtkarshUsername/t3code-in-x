@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "demo:dev": "vp run --filter @t3tools/web demo:dev",
+    "demo:build": "vp run --filter @t3tools/web demo:build",
+    "demo:preview": "vp run --filter @t3tools/web demo:preview",
     "prepare": "vp config --no-agent",
     "dev": "node scripts/dev-runner.ts dev",
     "dev:share": "node scripts/dev-runner.ts dev --share",
