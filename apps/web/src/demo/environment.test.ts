@@ -528,6 +528,7 @@ it.effect("keeps local RPC replies compatible with the wire contracts", () =>
       [WS_METHODS.vcsRefreshStatus, { cwd: "/workspace/orbit" }],
       [WS_METHODS.vcsListRefs, { cwd: "/workspace/orbit" }],
       [WS_METHODS.subscribeTerminalMetadata, {}],
+      [WS_METHODS.scheduledTasksSubscribe, {}],
       [WS_METHODS.projectsListEntries, { cwd: "/workspace/orbit" }],
       [WS_METHODS.projectsReadFile, { cwd: "/workspace/orbit", relativePath: "README.md" }],
       [WS_METHODS.projectsSearchEntries, { cwd: "/workspace/orbit", query: "src", limit: 20 }],

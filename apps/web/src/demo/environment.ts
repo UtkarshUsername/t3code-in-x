@@ -504,6 +504,7 @@ export function createDemoEnvironment(random = Math.random) {
         totalCount: 1,
       }),
     [W.subscribeTerminalMetadata]: () => steady({ type: "snapshot", terminals: [] }),
+    [W.scheduledTasksSubscribe]: () => steady({ tasks: [] }),
     [W.subscribeWorktreeSetup]: () => Stream.never,
     [W.subscribeProjectClones]: () => Stream.never,
     [W.subscribePreviewEvents]: () => Stream.never,
