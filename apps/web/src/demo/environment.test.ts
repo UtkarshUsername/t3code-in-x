@@ -53,6 +53,9 @@ it.effect("launches an independent thread and completes a replay with tools and 
       expect(result.threadId).toBe(id);
       expect(result.projection.runs.at(-1)?.status).toBe("running");
       expect(
+        result.projection.turnItems.find((item) => item.type === "user_message")?.startedAt,
+      ).toBe(result.projection.runs.at(-1)?.startedAt);
+      expect(
         environment.snapshot().threads.find((thread) => thread.id === id)?.activeRunId,
       ).toBeTruthy();
       yield* Effect.promise(() => vi.runAllTimersAsync());

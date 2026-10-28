@@ -191,8 +191,8 @@ export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjectio
       forkedFrom: null,
       createdBy: "user",
       creationSource: "web",
-      createdAt: AT,
-      updatedAt: AT,
+      createdAt: shell.createdAt,
+      updatedAt: shell.updatedAt,
       archivedAt: shell.archivedAt,
       settledOverride: shell.settledOverride,
       settledAt: shell.settledAt,
@@ -215,7 +215,7 @@ export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjectio
     contextHandoffs: [],
     contextTransfers: [],
     visibleTurnItems,
-    updatedAt: AT,
+    updatedAt: shell.updatedAt,
   };
 }
 

@@ -219,13 +219,23 @@ export function createDemoEnvironment() {
       throw new Error("Stop the active replay before starting another turn.");
     const runId = RunId.make(`demo-run-${nextId++}`);
     const scenario = scenarioFor(model.model);
-    const user = userItem(id, runId, messageId, thread.items.length, text);
-    const agent = assistantItem(id, runId, `${runId}-assistant`, thread.items.length + 1, "", true);
+    const startedAt = now();
+    const user = {
+      ...userItem(id, runId, messageId, thread.items.length, text),
+      startedAt,
+      updatedAt: startedAt,
+      completedAt: startedAt,
+    };
+    const agent = {
+      ...assistantItem(id, runId, `${runId}-assistant`, thread.items.length + 1, "", true),
+      startedAt,
+      updatedAt: startedAt,
+    };
     const replayRun = {
       ...run(id, runId, thread.runs.length + 1, messageId),
       modelSelection: model,
-      requestedAt: now(),
-      startedAt: now(),
+      requestedAt: startedAt,
+      startedAt,
       completedAt: null,
       status: "running" as const,
     };
@@ -233,6 +243,7 @@ export function createDemoEnvironment() {
       ...thread,
       modelSelection: model,
       settled: false,
+      metadata: { ...thread.metadata, updatedAt: startedAt, latestUserMessageAt: startedAt },
       runs: [...thread.runs, replayRun],
       items: [...thread.items, user, agent],
     });
