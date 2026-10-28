@@ -19,6 +19,7 @@ import * as Stream from "effect/Stream";
 import { createDemoEnvironment, DEMO_THREAD_ID, demoConfig } from "./environment";
 import { projects, projectionOf } from "./fixtures";
 import { isProviderInstancePickerReady, providerInstanceEntriesFor } from "../providerInstances";
+import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
 
 const isProjection = Schema.is(OrchestrationV2ThreadProjection);
 const isShell = Schema.is(OrchestrationV2ShellSnapshot);
@@ -58,6 +59,9 @@ it.effect("launches an independent thread and completes a replay with tools and 
         );
       }
       const seeded = environment.getThread(DEMO_THREAD_ID).items;
+      expect(
+        threadSupportsProviderHandoff(projectionOf(environment.getThread(DEMO_THREAD_ID))),
+      ).toBe(true);
       expect(seeded.findIndex((item) => item.type === "file_change")).toBeLessThan(
         seeded.findIndex((item) => item.type === "assistant_message"),
       );
@@ -125,15 +129,21 @@ it.effect("launches an independent thread and completes a replay with tools and 
         createdBy: "user",
         creationSource: "web",
         dispatchMode: { type: "start_immediately" },
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("opencode"),
+          model: "gpt-6.2-terra",
+        },
       });
       yield* Effect.promise(() => vi.runAllTimersAsync());
       const followUp = environment.getThread(id);
-      expect(followUp.runs.at(-1)?.modelSelection).toEqual(completed.runs.at(-1)?.modelSelection);
+      expect(followUp.runs.at(-1)?.providerInstanceId).toBe("opencode");
+      expect(followUp.runs[0]?.modelSelection).toEqual(completed.runs[0]?.modelSelection);
+      expect(threadSupportsProviderHandoff(projectionOf(followUp))).toBe(true);
       expect(
         followUp.items.filter((item) => item.type === "assistant_message").at(-1)?.text,
       ).toContain("older save");
       yield* environment.dispatch({
-        type: "thread.model-selection.set",
+        type: "provider.switch",
         commandId: CommandId.make("change-model"),
         threadId: id,
         modelSelection: {
@@ -141,6 +151,8 @@ it.effect("launches an independent thread and completes a replay with tools and 
           model: "claude-opus-5.7",
         },
       });
+      expect(environment.getThread(id).modelSelection.instanceId).toBe("claudeAgent");
+      expect(environment.getThread(id).items).toEqual(followUp.items);
       const diff = yield* environment.session.client[ORCHESTRATION_V2_WS_METHODS.getTurnDiff]({
         threadId: id,
         fromTurnCount: 0,

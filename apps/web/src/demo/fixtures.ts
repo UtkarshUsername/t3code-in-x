@@ -1,6 +1,7 @@
 import {
   MessageId,
   ProjectId,
+  ProviderThreadId,
   RunId,
   ThreadId,
   TurnItemId,
@@ -14,7 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { scenarios, scenarioFor } from "./scenarios";
-import { DEFAULT_DEMO_MODEL } from "./providers";
+import { DEFAULT_DEMO_MODEL, demoProviders } from "./providers";
 
 const MODEL = DEFAULT_DEMO_MODEL;
 const AT = DateTime.makeUnsafe("2026-10-28T09:00:00.000Z");
@@ -177,7 +178,9 @@ export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
     interactionMode: "default",
     branch: "main",
     worktreePath: null,
-    activeProviderThreadId: null,
+    activeProviderThreadId: ProviderThreadId.make(
+      `demo-provider-${thread.id}-${thread.modelSelection.instanceId}`,
+    ),
     lineage: { rootThreadId: thread.id, parentThreadId: null, relationshipToParent: null },
     forkedFrom: null,
     createdBy: "user",
@@ -204,6 +207,9 @@ export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
 
 export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjection {
   const shell = shellOf(thread);
+  const driver = demoProviders.find(
+    (provider) => provider.instanceId === thread.modelSelection.instanceId,
+  )!.driver;
   const visibleTurnItems: OrchestrationV2ProjectedTurnItem[] = thread.items.map(
     (item, position) => ({
       position,
@@ -224,7 +230,7 @@ export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjectio
       interactionMode: shell.interactionMode,
       branch: shell.branch,
       worktreePath: shell.worktreePath,
-      activeProviderThreadId: null,
+      activeProviderThreadId: shell.activeProviderThreadId,
       lineage: shell.lineage,
       forkedFrom: null,
       createdBy: "user",
@@ -242,7 +248,29 @@ export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjectio
     nodes: [],
     subagents: [],
     providerSessions: [],
-    providerThreads: [],
+    providerThreads: [
+      {
+        id: shell.activeProviderThreadId!,
+        driver,
+        providerInstanceId: thread.modelSelection.instanceId,
+        providerSessionId: null,
+        appThreadId: thread.id,
+        ownerNodeId: null,
+        nativeThreadRef: { driver, nativeId: thread.id, strength: "strong" },
+        nativeConversationHeadRef: null,
+        status: shell.activeRunId === null ? "idle" : "active",
+        firstRunOrdinal: null,
+        lastRunOrdinal: null,
+        handoffIds: [],
+        forkedFrom: null,
+        pendingBackgroundTasks: [],
+        contextUsage: null,
+        nativeMetadata: null,
+        goal: null,
+        createdAt: shell.createdAt,
+        updatedAt: shell.updatedAt,
+      },
+    ],
     providerTurns: [],
     runtimeRequests: [],
     messages: [],

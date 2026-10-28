@@ -336,6 +336,7 @@ export function createDemoEnvironment(random = Math.random) {
               },
             });
           case "thread.model-selection.set":
+          case "provider.switch":
             return replace({ ...thread, modelSelection: command.modelSelection, metadata });
           case "thread.runtime-mode.set":
             return replace({
