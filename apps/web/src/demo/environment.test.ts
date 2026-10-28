@@ -6,6 +6,7 @@ import {
   CommandId,
   WsRpcGroup,
   MessageId,
+  ProviderInstanceId,
   OrchestrationV2ThreadProjection,
   OrchestrationV2ShellSnapshot,
   ThreadId,
@@ -16,7 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { createDemoEnvironment, DEMO_THREAD_ID, demoConfig } from "./environment";
-import { MODEL, projects, projectionOf } from "./fixtures";
+import { projects, projectionOf } from "./fixtures";
 import { isProviderInstancePickerReady, providerInstanceEntriesFor } from "../providerInstances";
 
 const isProjection = Schema.is(OrchestrationV2ThreadProjection);
@@ -33,15 +34,28 @@ const validators = new Map(
 it.effect("launches an independent thread and completes a replay with tools and a diff", () =>
   Effect.gen(function* () {
     vi.useFakeTimers();
-    const environment = createDemoEnvironment();
+    const random = vi.fn().mockReturnValueOnce(0.5).mockReturnValue(0.99);
+    const environment = createDemoEnvironment(random);
     try {
+      expect(demoConfig.providers.map((provider) => provider.driver)).toEqual([
+        "codex",
+        "claudeAgent",
+        "cursor",
+        "grok",
+        "opencode",
+        "antigravity",
+        "muse",
+        "pi",
+      ]);
       for (const projectId of [null, ...projects.map((project) => project.id)]) {
         const selectable = providerInstanceEntriesFor(
           demoConfig.providers,
           demoConfig.settings,
           projectId,
         ).filter(isProviderInstancePickerReady);
-        expect(selectable.map((entry) => entry.instanceId)).toContain(MODEL.instanceId);
+        expect(selectable.map((entry) => entry.instanceId)).toEqual(
+          demoConfig.providers.map((provider) => provider.instanceId),
+        );
       }
       const seeded = environment.getThread(DEMO_THREAD_ID).items;
       expect(seeded.findIndex((item) => item.type === "file_change")).toBeLessThan(
@@ -53,7 +67,10 @@ it.effect("launches an independent thread and completes a replay with tools and 
         threadId: id,
         projectId: projects[1]!.id,
         title: "Find the bug",
-        modelSelection: { ...MODEL, model: "bugfix" },
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          model: "claude-fable-5.5",
+        },
         runtimeMode: "full-access",
         interactionMode: "default",
         workspaceStrategy: { type: "root" },
@@ -97,6 +114,46 @@ it.effect("launches an independent thread and completes a replay with tools and 
       );
       expect(isProjection(projectionOf(completed))).toBe(true);
       expect(isShell(environment.snapshot())).toBe(true);
+      expect(completed.runs.at(-1)?.providerInstanceId).toBe("claudeAgent");
+      yield* environment.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("random-follow-up"),
+        threadId: id,
+        messageId: MessageId.make("follow-up"),
+        text: "Continue",
+        attachments: [],
+        createdBy: "user",
+        creationSource: "web",
+        dispatchMode: { type: "start_immediately" },
+      });
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      const followUp = environment.getThread(id);
+      expect(followUp.runs.at(-1)?.modelSelection).toEqual(completed.runs.at(-1)?.modelSelection);
+      expect(
+        followUp.items.filter((item) => item.type === "assistant_message").at(-1)?.text,
+      ).toContain("older save");
+      yield* environment.dispatch({
+        type: "thread.model-selection.set",
+        commandId: CommandId.make("change-model"),
+        threadId: id,
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          model: "claude-opus-5.7",
+        },
+      });
+      const diff = yield* environment.session.client[ORCHESTRATION_V2_WS_METHODS.getTurnDiff]({
+        threadId: id,
+        fromTurnCount: 0,
+        toTurnCount: 1,
+      });
+      expect(diff.diff).toContain("src/search.ts");
+      expect(diff.diff).not.toContain("src/autosave.ts");
+      const nextDiff = yield* environment.session.client[ORCHESTRATION_V2_WS_METHODS.getTurnDiff]({
+        threadId: id,
+        fromTurnCount: 1,
+        toTurnCount: 2,
+      });
+      expect(nextDiff.diff).toContain("src/autosave.ts");
     } finally {
       environment.dispose();
       vi.useRealTimers();

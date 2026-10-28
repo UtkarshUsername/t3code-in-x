@@ -11,7 +11,7 @@ vp i
 vp run demo:dev
 ```
 
-Open the URL printed by Vite. The two fictional projects include completed, settled, and unfinished conversations. Use the existing model picker to choose **Build a feature**, **Fix a bug**, or **Review changes**. Send messages in those conversations or create a new thread. Responses, tool output, and diffs are scripted.
+Open the URL printed by Vite. The two fictional projects include completed, settled, and unfinished conversations. Use the existing picker to choose a provider and model. Each message randomly plays a feature, bug-fix, or review scenario, independently of the selected model. Send messages in those conversations or create a new thread. Model names are demo labels; responses, tool output, and diffs are scripted.
 
 Thread creation, follow-ups, cancellation, renaming, settling/reopening, archiving, deletion, file browsing, and diffs run locally. Operations requiring a real environment, such as shell execution, git pushes, pairing, and provider installation, report that they are unavailable. The frontend components and layout are unchanged.
 

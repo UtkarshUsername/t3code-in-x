@@ -1,7 +1,6 @@
 import {
   MessageId,
   ProjectId,
-  ProviderInstanceId,
   RunId,
   ThreadId,
   TurnItemId,
@@ -14,10 +13,10 @@ import {
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { scenarios } from "./scenarios";
+import { scenarios, scenarioFor } from "./scenarios";
+import { DEFAULT_DEMO_MODEL } from "./providers";
 
-export const REPLAY = ProviderInstanceId.make("demoReplay");
-export const MODEL = { instanceId: REPLAY, model: "feature" };
+const MODEL = DEFAULT_DEMO_MODEL;
 const AT = DateTime.makeUnsafe("2026-10-28T09:00:00.000Z");
 export const DEMO_THREAD_ID = ThreadId.make("demo-feature");
 export const projects: ReadonlyArray<OrchestrationProjectShell> = [
@@ -129,13 +128,19 @@ export function replayActivityItems(
   ] satisfies OrchestrationV2TurnItem[];
 }
 
-export function run(threadId: ThreadId, id: RunId, ordinal: number, userMessageId: string) {
+export function run(
+  threadId: ThreadId,
+  id: RunId,
+  ordinal: number,
+  userMessageId: string,
+  modelSelection = MODEL,
+) {
   return {
     id,
     threadId,
     ordinal,
-    providerInstanceId: REPLAY,
-    modelSelection: MODEL,
+    providerInstanceId: modelSelection.instanceId,
+    modelSelection,
     providerThreadId: null,
     userMessageId: MessageId.make(userMessageId),
     rootNodeId: null,
@@ -166,7 +171,7 @@ export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
     id: thread.id,
     projectId: thread.projectId,
     title: thread.title,
-    providerInstanceId: REPLAY,
+    providerInstanceId: thread.modelSelection.instanceId,
     modelSelection: thread.modelSelection,
     runtimeMode: "full-access",
     interactionMode: "default",
@@ -285,7 +290,7 @@ export function createFixtures(): DemoThread[] {
   ].map(({ id, title, scenario, settled, projectIndex }) => {
     const threadId = ThreadId.make(id);
     const runId = RunId.make(`${id}-run-1`);
-    const selected = scenarios.find((value) => value.id === scenario) ?? scenarios[0]!;
+    const selected = scenarioFor(scenario);
     const activity = id === "demo-empty" ? [] : replayActivityItems(threadId, runId, 1, selected);
     const items: OrchestrationV2TurnItem[] =
       id === "demo-empty"
@@ -305,16 +310,9 @@ export function createFixtures(): DemoThread[] {
       id: threadId,
       projectId: projects[projectIndex]!.id,
       title,
-      modelSelection: { instanceId: REPLAY, model: selected.id },
+      modelSelection: MODEL,
       settled,
-      runs: items.length
-        ? [
-            {
-              ...run(threadId, runId, 1, `${id}-user`),
-              modelSelection: { instanceId: REPLAY, model: selected.id },
-            },
-          ]
-        : [],
+      runs: items.length ? [run(threadId, runId, 1, `${id}-user`)] : [],
       items,
     };
   });
@@ -322,7 +320,7 @@ export function createFixtures(): DemoThread[] {
 
 export const files: Readonly<Record<string, string>> = {
   "README.md":
-    "# Interactive T3 Code demo\n\nThis fictional workspace lives entirely in your browser. Choose a replay scenario in the model picker, then send a message. Refresh to reset.\n",
+    "# Interactive T3 Code demo\n\nThis fictional workspace lives entirely in your browser. Choose a provider and model, then send a message to play a random scripted scenario. Refresh to reset.\n",
   "package.json": '{"name":"orbit","scripts":{"test":"vitest run","dev":"vite"},"private":true}',
   "src/App.tsx":
     "export function App() { return <main><h1>Orbit</h1><p>Your ideas, in motion.</p></main>; }\n",

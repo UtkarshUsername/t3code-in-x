@@ -36,7 +36,6 @@ import * as Stream from "effect/Stream";
 import { RpcSchema } from "effect/rpc";
 import { APP_VERSION } from "../branding";
 import {
-  REPLAY,
   DEMO_THREAD_ID,
   projects,
   files,
@@ -49,7 +48,8 @@ import {
   run,
   type DemoThread,
 } from "./fixtures";
-import { scenarioFor, scenarios } from "./scenarios";
+import { scenarios } from "./scenarios";
+import { demoProviders, demoProviderInstances } from "./providers";
 
 export { DEMO_THREAD_ID };
 export const DEMO_ENVIRONMENT_ID = EnvironmentId.make("demo-environment");
@@ -75,25 +75,7 @@ export const demoConfig: ServerConfig = {
     keybindingsConfigPath: "/workspace/.t3/keybindings.json",
     keybindings: [],
     issues: [],
-    providers: [
-      {
-        instanceId: REPLAY,
-        displayName: "Replay",
-        driver: "codex",
-        enabled: true,
-        installed: true,
-        version: "demo",
-        status: "ready",
-        auth: { status: "authenticated" },
-        checkedAt: "2026-10-28T09:00:00.000Z",
-        models: scenarios.map((scenario) => ({
-          slug: scenario.id,
-          name: scenario.name,
-          isCustom: false,
-          capabilities: null,
-        })),
-      },
-    ],
+    providers: demoProviders,
     availableEditors: [],
     observability: {
       logsDirectoryPath: "/workspace/.t3/logs",
@@ -102,9 +84,7 @@ export const demoConfig: ServerConfig = {
       otlpMetricsEnabled: false,
     },
     settings: {
-      providerInstances: {
-        [REPLAY]: { driver: "codex", displayName: "Replay", enabled: true },
-      },
+      providerInstances: demoProviderInstances,
     },
     threadSnapshotPagination: true,
     threadResumeCompletionMarker: true,
@@ -150,7 +130,7 @@ function channel<A>() {
   };
 }
 
-export function createDemoEnvironment() {
+export function createDemoEnvironment(random = Math.random) {
   const threads = new Map(createFixtures().map((thread) => [thread.id, thread]));
   const shell = channel<OrchestrationV2ShellStreamItem>();
   const details = new Map<ThreadId, ReturnType<typeof channel<OrchestrationV2ThreadStreamItem>>>();
@@ -222,7 +202,7 @@ export function createDemoEnvironment() {
     if (thread.runs.some((value) => value.status === "running"))
       throw new Error("Stop the active replay before starting another turn.");
     const runId = RunId.make(`demo-run-${nextId++}`);
-    const scenario = scenarioFor(model.model);
+    const scenario = scenarios[Math.floor(random() * scenarios.length)]!;
     const startedAt = now();
     const user = {
       ...userItem(id, runId, messageId, thread.items.length, text),
@@ -244,8 +224,7 @@ export function createDemoEnvironment() {
       updatedAt: startedAt,
     };
     const replayRun = {
-      ...run(id, runId, thread.runs.length + 1, messageId),
-      modelSelection: model,
+      ...run(id, runId, thread.runs.length + 1, messageId, model),
       requestedAt: startedAt,
       startedAt,
       completedAt: null,
@@ -458,6 +437,22 @@ export function createDemoEnvironment() {
     });
   });
   const steady = <A>(value: A) => Stream.concat(Stream.make(value), Stream.never);
+  const diffFor = (threadId: ThreadId, fromTurnCount: number, toTurnCount: number) => {
+    const thread = getThread(threadId);
+    const runIds = new Set(thread.runs.slice(fromTurnCount, toTurnCount).map((entry) => entry.id));
+    const changes = new Map<string, string>();
+    for (const item of thread.items) {
+      if (
+        item.type === "file_change" &&
+        item.runId !== null &&
+        runIds.has(item.runId) &&
+        item.diffStr
+      ) {
+        changes.set(item.fileName, item.diffStr);
+      }
+    }
+    return [...changes.values()].join("\n");
+  };
   const localVcs = {
     isRepo: true,
     hasPrimaryRemote: false,
@@ -558,7 +553,7 @@ export function createDemoEnvironment() {
     [O.getTurnDiff]: (input) =>
       Effect.sync(() => {
         const value = input as { threadId: ThreadId; fromTurnCount: number; toTurnCount: number };
-        return { ...value, diff: scenarioFor(getThread(value.threadId).modelSelection.model).diff };
+        return { ...value, diff: diffFor(value.threadId, value.fromTurnCount, value.toTurnCount) };
       }),
     [O.getFullThreadDiff]: (input) =>
       Effect.sync(() => {
@@ -566,7 +561,7 @@ export function createDemoEnvironment() {
         return {
           ...value,
           fromTurnCount: 0,
-          diff: scenarioFor(getThread(value.threadId).modelSelection.model).diff,
+          diff: diffFor(value.threadId, 0, value.toTurnCount),
         };
       }),
     [O.subscribeCommandOutput]: () =>
