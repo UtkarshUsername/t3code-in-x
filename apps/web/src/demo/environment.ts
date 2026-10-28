@@ -66,7 +66,7 @@ const auth = {
   bootstrapMethods: ["one-time-token"],
   sessionMethods: ["browser-session-cookie"],
   sessionCookieName: "demo_session",
-};
+} as const;
 export const demoConfig: ServerConfig = {
   ...Schema.decodeSync(ServerConfig)({
     environment: descriptor,
@@ -358,7 +358,10 @@ export function createDemoEnvironment() {
           case "thread.visit":
             return replace({
               ...thread,
-              metadata: { ...metadata, lastVisitedAt: DateTime.makeUnsafe(command.visitedAt) },
+              metadata: {
+                ...thread.metadata,
+                lastVisitedAt: DateTime.makeUnsafe(command.visitedAt),
+              },
             });
           case "thread.model-selection.set":
             return replace({ ...thread, modelSelection: command.modelSelection, metadata });

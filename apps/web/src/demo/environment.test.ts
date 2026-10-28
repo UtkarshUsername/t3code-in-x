@@ -131,6 +131,9 @@ it.effect("publishes authoritative lifecycle changes and keeps visits independen
       });
     try {
       yield* dispatch({ type: "thread.metadata.update", title: "A different title" });
+      const beforeVisit = environment.getThread(DEMO_THREAD_ID).metadata?.updatedAt;
+      yield* dispatch({ type: "thread.visit", visitedAt: "2026-10-28T10:00:00.000Z" });
+      expect(environment.getThread(DEMO_THREAD_ID).metadata?.updatedAt).toBe(beforeVisit);
       const receipt = yield* dispatch({ type: "thread.settle" });
       expect(environment.snapshot().snapshotSequence).toBe(receipt.sequence);
       expect(
@@ -243,12 +246,12 @@ it.effect("keeps local RPC replies compatible with the wire contracts", () =>
         const rpc = WsRpcGroup.requests.get(method)!;
         const returned = client[method]!(input);
         if (RpcSchema.isStreamSchema(rpc.successSchema)) {
-          const chunk = yield* Stream.runHead(returned as Stream.Stream<unknown, unknown>);
+          const chunk = yield* Stream.runHead(returned as Stream.Stream<unknown, Error>);
           expect(chunk._tag, method).toBe("Some");
           if (chunk._tag === "Some")
             expect(validators.get(method)!(chunk.value), method).toBe(true);
         } else {
-          const result = yield* returned as Effect.Effect<unknown, unknown>;
+          const result = yield* returned as Effect.Effect<unknown, Error>;
           expect(validators.get(method)!(result), method).toBe(true);
         }
       }
