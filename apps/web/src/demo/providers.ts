@@ -22,13 +22,13 @@ const codexModels = [
 ];
 const claudeModels = [
   model("claude-fable-5.5", "Claude Fable 5.5"),
-  model("claude-opus-5.7", "Opus 5.7"),
-  model("claude-sonnet-5.7", "Sonnet 5.7"),
+  model("claude-opus-5.7", "Claude Opus 5.7"),
+  model("claude-sonnet-5.7", "Claude Sonnet 5.7"),
 ];
 const grokModels = [model("grok-5", "Grok 5"), model("composer-4", "Composer 4")];
 const museModels = [
   model("muse-wonder-1.2", "Muse Wonder 1.2"),
-  model("muse-spark-1.4", "muse spark 1.4"),
+  model("muse-spark-1.4", "Muse Spark 1.4"),
 ];
 const geminiModels = [
   model("gemini-4-carbon", "Gemini 4 Carbon"),
