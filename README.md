@@ -33,7 +33,7 @@ The deployable directory is **`apps/web/dist-demo`**. The Cloudflare Pages proje
 Cloudflare build settings:
 
 - Root directory: repository root.
-- Build command: `npx --yes vite-plus@1.4.0 install --frozen-lockfile --filter=@t3tools/web... --filter=@t3tools/scripts... && npx --yes vite-plus@1.4.0 run demo:build`.
+- Build command: `npm exec --yes --package=vite-plus@1.4.0 -- vp install --frozen-lockfile --filter=@t3tools/web... --filter=@t3tools/scripts... && npm exec --yes --package=vite-plus@1.4.0 -- vp run demo:build`.
 - Output directory: `apps/web/dist-demo`.
 - Build environment: `NODE_VERSION=26.12.1`, `SKIP_DEPENDENCY_INSTALL=1`, and `DEMO_PUBLIC_URL=https://t3code-in-x.pages.dev`.
 
