@@ -446,7 +446,7 @@ export function createFixtures(): DemoThread[] {
 
 export const files: Readonly<Record<string, string>> = {
   "README.md":
-    "# Interactive T3 Code demo\n\nThis fictional workspace lives entirely in your browser. Choose a provider and model, then send a message to play a random scripted scenario. Refresh to reset.\n",
+    "# Interactive T3 Code demo\n\nThis fictional workspace lives entirely in your browser. Choose a provider and model, then send a message to play the next scripted scenario. Refresh to reset.\n",
   "package.json": '{"name":"orbit","scripts":{"test":"vitest run","dev":"vite"},"private":true}',
   "src/App.tsx":
     "export function App() { return <main><h1>Orbit</h1><p>Your ideas, in motion.</p></main>; }\n",

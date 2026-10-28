@@ -18,7 +18,7 @@ type Response = Extract<OrchestrationV2Command, { type: "runtime-request.respond
 export function createReplayPlayer(
   getThread: (id: ThreadId) => DemoThread,
   replace: (thread: DemoThread) => { sequence: number },
-  random: () => number,
+  firstScenario: number,
 ) {
   const playback = new Map<
     ThreadId,
@@ -28,6 +28,7 @@ export function createReplayPlayer(
     }
   >();
   let nextRun = 1;
+  let nextScenario = firstScenario;
 
   const stop = (id: ThreadId) => {
     clearTimeout(playback.get(id)?.timer);
@@ -69,7 +70,7 @@ export function createReplayPlayer(
     const thread = getThread(id);
     if (thread.runs.some((run) => ["running", "waiting"].includes(run.status)))
       throw new Error("Stop the active replay before starting another turn.");
-    const turn = thread.continuation ?? scenarios[Math.floor(random() * scenarios.length)]!;
+    const turn = thread.continuation ?? scenarios[nextScenario++ % scenarios.length]!;
     const runId = RunId.make(`demo-run-${nextRun++}`);
     const at = DateTime.nowUnsafe();
     const state: NonNullable<ReturnType<typeof playback.get>> = {};

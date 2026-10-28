@@ -125,7 +125,7 @@ function channel<A>() {
   };
 }
 
-export function createDemoEnvironment(random = Math.random) {
+export function createDemoEnvironment(firstScenario = 0) {
   const threads = new Map(createFixtures().map((thread) => [thread.id, thread]));
   const shell = channel<OrchestrationV2ShellStreamItem>();
   const details = new Map<ThreadId, ReturnType<typeof channel<OrchestrationV2ThreadStreamItem>>>();
@@ -163,7 +163,7 @@ export function createDemoEnvironment(random = Math.random) {
     threads.set(thread.id, thread);
     return publish(thread.id);
   };
-  const player = createReplayPlayer(getThread, replace, random);
+  const player = createReplayPlayer(getThread, replace, firstScenario);
   const { start, stop } = player;
   const dispatch = Effect.fn("Demo.dispatch")(function* (input: unknown) {
     const failure = (cause: unknown) =>

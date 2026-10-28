@@ -32,7 +32,7 @@ const codingScenarios = [
     command: "vp test run src/command-menu.test.ts",
     file: "src/CommandMenu.tsx",
     answer:
-      "Added a command menu with **project and thread search**.\n\n- Open it with `Ctrl+K` or `Cmd+K`.\n- Navigate results with the arrow keys and press Enter to select.\n- Escape closes the menu and restores focus.\n\nThe focused checks passed.\n\n*This is a scripted replay in a fictional workspace. Send another message to explore a random scenario.*",
+      "Added a command menu with **project and thread search**.\n\n- Open it with `Ctrl+K` or `Cmd+K`.\n- Navigate results with the arrow keys and press Enter to select.\n- Escape closes the menu and restores focus.\n\nThe focused checks passed.\n\n*This is a scripted replay in a fictional workspace. Send another message to explore the next scenario.*",
     diff: 'diff --git a/src/CommandMenu.tsx b/src/CommandMenu.tsx\nnew file mode 100644\n--- /dev/null\n+++ b/src/CommandMenu.tsx\n@@ -0,0 +1,4 @@\n+export function CommandMenu() {\n+  return <Command label="Jump to a project or thread" />;\n+}\n+\n',
   },
   {
@@ -210,7 +210,7 @@ export const scenarios: readonly DemoScenario[] = [
         command("vp test run src/empty-state.test.ts"),
       ],
       answer:
-        "Implemented the **empty state from our previous turn** with a semantic heading and native button. The simulated accessibility checks pass.\n\nThis completes the two-turn scenario. Your next message starts a fresh random one.",
+        "Implemented the **empty state from our previous turn** with a semantic heading and native button. The simulated accessibility checks pass.\n\nThis completes the two-turn scenario. Your next message continues the scenario cycle.",
     },
   },
 ];
