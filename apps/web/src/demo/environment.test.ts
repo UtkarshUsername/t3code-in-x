@@ -15,8 +15,9 @@ import {
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { createDemoEnvironment, DEMO_THREAD_ID } from "./environment";
+import { createDemoEnvironment, DEMO_THREAD_ID, demoConfig } from "./environment";
 import { MODEL, projects, projectionOf } from "./fixtures";
+import { isProviderInstancePickerReady, providerInstanceEntriesFor } from "../providerInstances";
 
 const isProjection = Schema.is(OrchestrationV2ThreadProjection);
 const isShell = Schema.is(OrchestrationV2ShellSnapshot);
@@ -34,6 +35,14 @@ it.effect("launches an independent thread and completes a replay with tools and 
     vi.useFakeTimers();
     const environment = createDemoEnvironment();
     try {
+      for (const projectId of [null, ...projects.map((project) => project.id)]) {
+        const selectable = providerInstanceEntriesFor(
+          demoConfig.providers,
+          demoConfig.settings,
+          projectId,
+        ).filter(isProviderInstancePickerReady);
+        expect(selectable.map((entry) => entry.instanceId)).toContain(MODEL.instanceId);
+      }
       const id = ThreadId.make("visitor-thread");
       const result = yield* environment.launch({
         commandId: CommandId.make("launch-1"),

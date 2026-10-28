@@ -101,7 +101,11 @@ export const demoConfig: ServerConfig = {
       otlpTracesEnabled: false,
       otlpMetricsEnabled: false,
     },
-    settings: {},
+    settings: {
+      providerInstances: {
+        [REPLAY]: { driver: "codex", displayName: "Replay", enabled: true },
+      },
+    },
     threadSnapshotPagination: true,
     threadResumeCompletionMarker: true,
     shellResumeCompletionMarker: true,

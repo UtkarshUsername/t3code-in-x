@@ -18,7 +18,7 @@ import { scenarios } from "./scenarios";
 
 export const REPLAY = ProviderInstanceId.make("demoReplay");
 export const MODEL = { instanceId: REPLAY, model: "feature" };
-export const AT = DateTime.makeUnsafe("2026-10-28T09:00:00.000Z");
+const AT = DateTime.makeUnsafe("2026-10-28T09:00:00.000Z");
 export const DEMO_THREAD_ID = ThreadId.make("demo-feature");
 export const projects: ReadonlyArray<OrchestrationProjectShell> = [
   {
@@ -299,8 +299,6 @@ export const files: Readonly<Record<string, string>> = {
   "package.json": '{"name":"orbit","scripts":{"test":"vitest run","dev":"vite"},"private":true}',
   "src/App.tsx":
     "export function App() { return <main><h1>Orbit</h1><p>Your ideas, in motion.</p></main>; }\n",
-  "src/CommandMenu.tsx":
-    'export function CommandMenu() {\n  return <Command label="Jump to a project or thread" />;\n}\n',
   "src/CommandMenu.tsx":
     'export function CommandMenu() { return <Command label="Jump to a project or thread" />; }\n',
   "src/search.ts": "export const uniqueResults = <T,>(items: T[]) => [...new Set(items)];\n",
