@@ -28,12 +28,16 @@ vp run demo:build
 vp run demo:preview
 ```
 
-The deployable directory is **`apps/web/dist-demo`**. Upload that directory to a static host, or connect this repository to Cloudflare Pages with:
+The deployable directory is **`apps/web/dist-demo`**. The Cloudflare Pages project is **`t3code-in-x`**, targeting [t3code-in-x.pages.dev](https://t3code-in-x.pages.dev). Cloudflare builds the private GitHub repository's `main` branch.
 
-- Build command: `vp run demo:build` after installing dependencies with `vp i`.
-- Build output directory: `apps/web/dist-demo`.
-- Repository root as the working directory.
-- Node version matching `package.json`.
+Cloudflare build settings:
+
+- Root directory: repository root.
+- Build command: `npx --yes vite-plus@1.4.0 install --frozen-lockfile --filter=@t3tools/web... --filter=@t3tools/scripts... && npx --yes vite-plus@1.4.0 run demo:build`.
+- Output directory: `apps/web/dist-demo`.
+- Build environment: `NODE_VERSION=26.12.1`, `SKIP_DEPENDENCY_INSTALL=1`, and `DEMO_PUBLIC_URL=https://t3code-in-x.pages.dev`.
+
+Push to `main` to publish an update. The public URL must be set during the build so the X card points to the deployed site.
 
 The build includes Cloudflare Pages `_headers` and `_redirects` files. It does not need a Worker, API, database, or WebSocket server. The ordinary upstream web build remains separate.
 
