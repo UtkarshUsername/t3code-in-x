@@ -32,9 +32,9 @@ const museModels = [
 ];
 const geminiModels = [
   model("gemini-4-carbon", "Gemini 4 Carbon"),
+  model("gemini-4-boron", "Gemini 4 Boron"),
   model("gemini-argon-4.1-pro", "Gemini Argon 4.1 Pro"),
   model("gemini-3.5-pro", "Gemini 3.5 Pro"),
-  model("gemini-4-flash", "Gemini 4 Flash"),
 ];
 const openCodeModels = [
   model("big-pickle", "Big Pickle"),
