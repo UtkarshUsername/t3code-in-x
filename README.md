@@ -11,7 +11,9 @@ vp i
 vp run demo:dev
 ```
 
-Open the URL printed by Vite. The two fictional projects include completed, settled, and unfinished conversations. Use the existing picker to choose a provider and model. Each message randomly plays a feature, bug-fix, or review scenario, independently of the selected model. Send messages in those conversations or create a new thread. Model names are demo labels; responses, tool output, and diffs are scripted.
+Open the URL printed by Vite. The two fictional projects include completed, settled, and unfinished conversations. Use the existing picker to choose a provider and model. Each message randomly plays one of eight scenarios, independently of the selected model: feature work, a search fix, an autosave review, an approval-gated migration, a test-strategy question, a project tour, a failing-test repair, or a two-turn design/build sequence. The second design/build turn continues on your next message; later messages return to random scenarios. The seeded empty-state design thread is ready for its implementation turn. Model names are demo labels; responses, tool output, and diffs are scripted.
+
+Thinking streams, plans update, and tools move from running to completed. Approvals and questions pause the replay until you answer. Declining an approval skips the simulated edit; stopping a turn cancels its pending requests. All of these interactions use the original T3 Code controls.
 
 Thread creation, follow-ups, cancellation, renaming, settling/reopening, archiving, deletion, file browsing, and diffs run locally. Operations requiring a real environment, such as shell execution, git pushes, pairing, and provider installation, report that they are unavailable. The frontend components and layout are unchanged.
 

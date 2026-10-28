@@ -1,4 +1,28 @@
-export const scenarios = [
+import type { OrchestrationV2UserInputQuestion } from "@t3tools/contracts";
+
+export type DemoStep =
+  | { type: "reasoning"; text: string }
+  | { type: "read"; path: string }
+  | { type: "plan"; steps: readonly string[]; current: number }
+  | { type: "edit"; file: string; diff: string }
+  | { type: "command"; input: string; output: string; exitCode?: number }
+  | { type: "approval"; prompt: string }
+  | { type: "question"; questions: readonly OrchestrationV2UserInputQuestion[] };
+
+export interface DemoTurn {
+  introduction: string;
+  answer: string;
+  steps: readonly DemoStep[];
+  next?: DemoTurn;
+}
+
+interface DemoScenario extends DemoTurn {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
+const codingScenarios = [
   {
     id: "feature",
     name: "Build a feature",
@@ -37,6 +61,160 @@ export const scenarios = [
   },
 ] as const;
 
+const checklist = [
+  "Inspect the existing behavior",
+  "Make the smallest change",
+  "Run focused tests",
+];
+const plan = (current: number): DemoStep => ({ type: "plan", steps: checklist, current });
+const command = (input: string, output = "✓ Focused checks passed (simulated)"): DemoStep => ({
+  type: "command",
+  input,
+  output,
+});
+const migration = {
+  type: "edit",
+  file: "src/schema.ts",
+  diff: "diff --git a/src/schema.ts b/src/schema.ts\n--- a/src/schema.ts\n+++ b/src/schema.ts\n@@ -1 +1,2 @@\n export const version = 1;\n+export const indexes = ['notes.updatedAt'];\n",
+} satisfies DemoStep;
+
+export const scenarios: readonly DemoScenario[] = [
+  ...codingScenarios.map((scenario): DemoScenario => ({
+    ...scenario,
+    steps: [
+      { type: "reasoning", text: scenario.introduction },
+      ...(scenario.id === "feature" ? [plan(0)] : []),
+      { type: "read", path: scenario.id === "feature" ? "package.json" : scenario.file },
+      ...(scenario.id === "feature" ? [plan(1)] : []),
+      { type: "edit", file: scenario.file, diff: scenario.diff },
+      ...(scenario.id === "feature" ? [plan(2)] : []),
+      command(scenario.command),
+      ...(scenario.id === "feature" ? [plan(3)] : []),
+    ],
+  })),
+  {
+    id: "migration",
+    name: "Approve a migration",
+    prompt: "Add an updated-at index to the notes schema, but ask before changing it.",
+    introduction: "I'll inspect the schema and ask before applying the migration.",
+    steps: [
+      { type: "read", path: "src/schema.ts" },
+      {
+        type: "approval",
+        prompt:
+          "Add the notes.updatedAt index to src/schema.ts? This is a simulated edit in the demo workspace.",
+      },
+      migration,
+      command("vp test run src/schema.test.ts"),
+    ],
+    answer:
+      "Added the **updated-at index** after your approval. The simulated migration checks pass.\n\nNo real files or database were changed.",
+  },
+  {
+    id: "question",
+    name: "Choose a test strategy",
+    prompt: "Help choose the test strategy for the notes editor.",
+    introduction: "I'll ask which behavior matters most before recommending a test strategy.",
+    steps: [
+      {
+        type: "reasoning",
+        text: "The editor has both a parser and an interactive preview. A useful recommendation depends on which surface the user wants to prioritize.",
+      },
+      {
+        type: "question",
+        questions: [
+          {
+            id: "test-focus",
+            header: "Test focus",
+            question: "Which part of the notes editor should we prioritize?",
+            options: [
+              {
+                label: "Parser correctness",
+                description: "Start with fast unit tests for malformed and nested Markdown.",
+              },
+              {
+                label: "Editor interactions",
+                description: "Start with typing, selection, and keyboard navigation.",
+              },
+            ],
+            allowCustomAnswer: true,
+            required: true,
+          },
+        ],
+      },
+      { type: "read", path: "package.json" },
+    ],
+    answer:
+      "Your selection is recorded below. Keep the first suite focused on that behavior, then add a small integration check for the editor and preview together.\n\nThis was a local, scripted clarification.",
+  },
+  {
+    id: "tour",
+    name: "Explore a project",
+    prompt: "Give me a quick tour of the project without changing anything.",
+    introduction: "I'll inspect the manifest and app entry point without editing files.",
+    steps: [
+      { type: "read", path: "package.json" },
+      { type: "read", path: "src/App.tsx" },
+    ],
+    answer:
+      "## Project tour\n\n| File | Purpose |\n| --- | --- |\n| `package.json` | Development and test scripts |\n| `src/App.tsx` | The application entry view |\n| `src/search.ts` | Search result handling |\n\nNo files were changed.",
+  },
+  {
+    id: "test-repair",
+    name: "Repair a failing test",
+    prompt: "Investigate the failing clamp test and fix the boundary condition.",
+    introduction:
+      "I'll reproduce the boundary failure, inspect the helper, and rerun the test after fixing it.",
+    steps: [
+      {
+        type: "reasoning",
+        text: "The boundary test should distinguish clamping from wrapping. Reproduce the failure before changing the helper.",
+      },
+      {
+        type: "command",
+        input: "vp test run src/math.test.ts",
+        output: "FAIL clamp(-3, 0, 10)\nExpected: 0\nReceived: -3\n1 failed, 11 passed (simulated)",
+        exitCode: 1,
+      },
+      { type: "read", path: "src/math.ts" },
+      {
+        type: "edit",
+        file: "src/math.ts",
+        diff: "diff --git a/src/math.ts b/src/math.ts\n--- a/src/math.ts\n+++ b/src/math.ts\n@@ -1 +1 @@\n-export const clamp = (n: number, min: number, max: number) => Math.min(n, max);\n+export const clamp = (n: number, min: number, max: number) => Math.min(Math.max(n, min), max);\n",
+      },
+      command("vp test run src/math.test.ts", "✓ 12 tests passed (simulated)"),
+    ],
+    answer:
+      "Fixed the missing lower-bound check.\n\n```ts\nclamp(-3, 0, 10); // 0\nclamp(12, 0, 10); // 10\n```\n\nThe failing regression now passes alongside the other 11 tests.",
+  },
+  {
+    id: "design-build",
+    name: "Design, then build",
+    prompt: "Design an accessible empty state. We'll implement it in the next message.",
+    introduction: "I'll inspect the app and propose a small empty state before we implement it.",
+    steps: [{ type: "read", path: "src/App.tsx" }],
+    answer:
+      "## Empty-state design\n\n- A clear heading: **No notes yet**.\n- One short explanation.\n- A keyboard-accessible **Create note** button.\n\nSend another message to play the implementation turn of this same scenario.",
+    next: {
+      introduction: "I'll implement the empty state we designed in the previous turn.",
+      steps: [
+        {
+          type: "reasoning",
+          text: "Continue the previous design: preserve the heading and one primary action, using a native button for keyboard access.",
+        },
+        {
+          type: "edit",
+          file: "src/EmptyState.tsx",
+          diff: "diff --git a/src/EmptyState.tsx b/src/EmptyState.tsx\nnew file mode 100644\n--- /dev/null\n+++ b/src/EmptyState.tsx\n@@ -0,0 +1,4 @@\n+export function EmptyState() {\n+  return <section><h2>No notes yet</h2><p>Create your first note.</p>\n+    <button>Create note</button></section>;\n+}\n",
+        },
+        command("vp test run src/empty-state.test.ts"),
+      ],
+      answer:
+        "Implemented the **empty state from our previous turn** with a semantic heading and native button. The simulated accessibility checks pass.\n\nThis completes the two-turn scenario. Your next message starts a fresh random one.",
+    },
+  },
+];
+
 export function scenarioFor(id: string) {
-  return scenarios.find((scenario) => scenario.id === id) ?? scenarios[0];
+  return scenarios.find((scenario) => scenario.id === id) ?? scenarios[0]!;
 }

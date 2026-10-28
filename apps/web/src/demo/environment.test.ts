@@ -20,6 +20,8 @@ import { createDemoEnvironment, DEMO_THREAD_ID, demoConfig } from "./environment
 import { projects, projectionOf } from "./fixtures";
 import { isProviderInstancePickerReady, providerInstanceEntriesFor } from "../providerInstances";
 import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
+import { derivePendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
+import { scenarios } from "./scenarios";
 
 const isProjection = Schema.is(OrchestrationV2ThreadProjection);
 const isShell = Schema.is(OrchestrationV2ShellSnapshot);
@@ -35,7 +37,10 @@ const validators = new Map(
 it.effect("launches an independent thread and completes a replay with tools and a diff", () =>
   Effect.gen(function* () {
     vi.useFakeTimers();
-    const random = vi.fn().mockReturnValueOnce(0.5).mockReturnValue(0.99);
+    const random = vi
+      .fn()
+      .mockReturnValueOnce(1.5 / scenarios.length)
+      .mockReturnValue(2.5 / scenarios.length);
     const environment = createDemoEnvironment(random);
     try {
       expect(demoConfig.providers.map((provider) => provider.driver)).toEqual([
@@ -176,7 +181,7 @@ it.effect("launches an independent thread and completes a replay with tools and 
 it.effect("cancels replay without late updates and accepts a follow-up", () =>
   Effect.gen(function* () {
     vi.useFakeTimers();
-    const environment = createDemoEnvironment();
+    const environment = createDemoEnvironment(() => 0);
     const dispatch = (type: string) =>
       environment.dispatch({
         type,
@@ -197,7 +202,7 @@ it.effect("cancels replay without late updates and accepts a follow-up", () =>
       yield* dispatch("message.dispatch");
       yield* Effect.promise(() => vi.advanceTimersByTimeAsync(250));
       const running = environment.getThread(DEMO_THREAD_ID);
-      expect(running.items.at(-1)?.type).toBe("assistant_message");
+      expect(running.items.at(-1)?.type).toBe("reasoning");
       expect(running.items.at(-1)?.status).toBe("running");
       yield* dispatch("thread.stop");
       const sequence = environment.snapshot().snapshotSequence;
@@ -258,6 +263,229 @@ it.effect("publishes authoritative lifecycle changes and keeps visits independen
       independent.dispose();
     }
   }),
+);
+
+it.effect("plays every scenario with real request controls and a coherent continuation", () =>
+  Effect.gen(function* () {
+    vi.useFakeTimers();
+    try {
+      for (const [index, scenario] of scenarios.entries()) {
+        const random = vi.fn(() => (index + 0.5) / scenarios.length);
+        const environment = createDemoEnvironment(random);
+        const dispatch = (input: Record<string, unknown>) =>
+          environment.dispatch({
+            commandId: CommandId.make(`scenario-${scenario.id}`),
+            threadId: DEMO_THREAD_ID,
+            ...input,
+          });
+        const send = () =>
+          dispatch({
+            type: "message.dispatch",
+            messageId: MessageId.make(`message-${scenario.id}`),
+            text: "Explore this scenario",
+            attachments: [],
+            createdBy: "user",
+            creationSource: "web",
+            dispatchMode: { type: "start_immediately" },
+          });
+        try {
+          const observed = yield* environment.session.client[
+            ORCHESTRATION_V2_WS_METHODS.subscribeThread
+          ]({ threadId: DEMO_THREAD_ID }).pipe(
+            Stream.tap((event) =>
+              event.kind === "synchronized"
+                ? Effect.gen(function* () {
+                    yield* send();
+                    yield* Effect.promise(() => vi.runAllTimersAsync());
+                    const waiting = projectionOf(environment.getThread(DEMO_THREAD_ID));
+                    expect(isProjection(waiting), scenario.id).toBe(true);
+                    expect(isShell(environment.snapshot()), scenario.id).toBe(true);
+                    const requests = derivePendingThreadRequests(waiting);
+                    for (const approval of requests.approvals) {
+                      expect(approval.responseCapability).toBe("live");
+                      const latestRun = environment.getThread(DEMO_THREAD_ID).runs.at(-1)!;
+                      expect(
+                        waiting.turnItems
+                          .filter((item) => item.runId === latestRun.id)
+                          .some((item) => item.type === "file_change"),
+                      ).toBe(false);
+                      yield* dispatch({
+                        type: "runtime-request.respond",
+                        requestId: approval.requestId,
+                        decision: "accept",
+                      });
+                    }
+                    for (const question of requests.userInputs) {
+                      expect(question.responseCapability).toBe("live");
+                      const invalid = yield* Effect.exit(
+                        dispatch({
+                          type: "runtime-request.respond",
+                          requestId: question.requestId,
+                          answers: {},
+                        }),
+                      );
+                      expect(Exit.isFailure(invalid)).toBe(true);
+                      yield* dispatch({
+                        type: "runtime-request.respond",
+                        requestId: question.requestId,
+                        answers: { "test-focus": "Editor interactions" },
+                      });
+                    }
+                    yield* Effect.promise(() => vi.runAllTimersAsync());
+                  })
+                : Effect.void,
+            ),
+            Stream.takeUntil(
+              (event) =>
+                event.kind === "snapshot" &&
+                event.projection.runs.some(
+                  (run) =>
+                    run.userMessageId === `message-${scenario.id}` && run.status === "completed",
+                ),
+            ),
+            Stream.filter((event) => event.kind === "snapshot"),
+            Stream.map((event) => event.projection),
+            Stream.runCollect,
+          );
+          const completed = environment.getThread(DEMO_THREAD_ID);
+          expect(observed.every(isProjection), scenario.id).toBe(true);
+          if (scenario.id === "feature") {
+            const plans = observed.flatMap((projection) =>
+              projection.turnItems.filter(
+                (item) => item.runId === completed.runs.at(-1)?.id && item.type === "todo_list",
+              ),
+            );
+            expect(
+              plans.some(
+                (item) =>
+                  item.type === "todo_list" && item.steps.some((step) => step.status === "running"),
+              ),
+            ).toBe(true);
+            expect(plans.at(-1)).toMatchObject({
+              steps: [{ status: "completed" }, { status: "completed" }, { status: "completed" }],
+            });
+            expect(new Set(plans.map((item) => item.id)).size).toBe(1);
+            expect(
+              observed.some((projection) =>
+                projection.turnItems.some(
+                  (item) => item.type === "dynamic_tool" && item.status === "running",
+                ),
+              ),
+            ).toBe(true);
+            expect(
+              observed.some((projection) =>
+                projection.turnItems.some(
+                  (item) => item.type === "reasoning" && item.streaming && item.text.length > 0,
+                ),
+              ),
+            ).toBe(true);
+          }
+          expect(completed.runs.at(-1)?.status, scenario.id).toBe("completed");
+          expect(completed.items.at(-1)?.type).toBe("assistant_message");
+          expect(isProjection(projectionOf(completed)), scenario.id).toBe(true);
+          expect(completed.requests?.every((request) => request.status !== "pending") ?? true).toBe(
+            true,
+          );
+          if (scenario.id === "question") {
+            expect(completed.items.at(-1)).toMatchObject({
+              text: expect.stringContaining("Editor interactions"),
+            });
+          }
+          if (scenario.id === "test-repair") {
+            expect(
+              completed.items
+                .filter(
+                  (item) =>
+                    item.runId === completed.runs.at(-1)?.id && item.type === "command_execution",
+                )
+                .map((item) => item.status),
+            ).toEqual(["failed", "completed"]);
+          }
+          if (scenario.next) {
+            yield* send();
+            yield* Effect.promise(() => vi.runAllTimersAsync());
+            const continued = environment.getThread(DEMO_THREAD_ID);
+            expect(continued.items.at(-1)).toMatchObject({
+              text: expect.stringContaining("previous turn"),
+            });
+            expect(continued.continuation).toBeUndefined();
+            expect(random).toHaveBeenCalledTimes(1);
+            yield* send();
+            yield* Effect.promise(() => vi.runAllTimersAsync());
+            expect(random).toHaveBeenCalledTimes(2);
+          }
+        } finally {
+          environment.dispose();
+        }
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  }),
+);
+
+it.effect(
+  "declines and cancels pending requests without applying an edit or resuming stale work",
+  () =>
+    Effect.gen(function* () {
+      vi.useFakeTimers();
+      const index = scenarios.findIndex((scenario) => scenario.id === "migration");
+      const environment = createDemoEnvironment(() => (index + 0.5) / scenarios.length);
+      const dispatch = (input: Record<string, unknown>) =>
+        environment.dispatch({
+          commandId: CommandId.make("approval-lifecycle"),
+          threadId: DEMO_THREAD_ID,
+          ...input,
+        });
+      const send = () =>
+        dispatch({
+          type: "message.dispatch",
+          messageId: MessageId.make("approval-message"),
+          text: "Go",
+          attachments: [],
+          createdBy: "user",
+          creationSource: "web",
+          dispatchMode: { type: "start_immediately" },
+        });
+      try {
+        yield* send();
+        yield* Effect.promise(() => vi.runAllTimersAsync());
+        const first = environment.getThread(DEMO_THREAD_ID).requests!.at(-1)!;
+        expect(
+          environment.snapshot().threads.find((thread) => thread.id === DEMO_THREAD_ID)
+            ?.pendingRuntimeRequest?.id,
+        ).toBe(first.id);
+        yield* dispatch({
+          type: "runtime-request.respond",
+          requestId: first.id,
+          decision: "decline",
+        });
+        yield* Effect.promise(() => vi.runAllTimersAsync());
+        const declined = environment.getThread(DEMO_THREAD_ID);
+        expect(
+          declined.items
+            .filter((item) => item.runId === declined.runs.at(-1)?.id)
+            .some((item) => item.type === "file_change"),
+        ).toBe(false);
+        expect(declined.requests!.at(-1)?.decision).toBe("decline");
+        yield* send();
+        yield* Effect.promise(() => vi.runAllTimersAsync());
+        const second = environment.getThread(DEMO_THREAD_ID).requests!.at(-1)!;
+        yield* dispatch({ type: "thread.stop" });
+        const stopped = environment.snapshot().snapshotSequence;
+        const stale = yield* Effect.exit(
+          dispatch({ type: "runtime-request.respond", requestId: second.id, decision: "accept" }),
+        );
+        expect(Exit.isFailure(stale)).toBe(true);
+        yield* Effect.promise(() => vi.runAllTimersAsync());
+        expect(environment.snapshot().snapshotSequence).toBe(stopped);
+        expect(environment.getThread(DEMO_THREAD_ID).requests!.at(-1)?.status).toBe("cancelled");
+        expect(environment.getThread(DEMO_THREAD_ID).runs.at(-1)?.status).toBe("interrupted");
+      } finally {
+        environment.dispose();
+        vi.useRealTimers();
+      }
+    }),
 );
 
 it.effect("serves files and diffs locally and rejects unsupported execution immediately", () =>

@@ -11,7 +11,6 @@ import {
   OrchestrationV2ThreadLaunchError,
   CommandId,
   ProjectId,
-  RunId,
   ServerConfig,
   ThreadId,
   WS_METHODS as W,
@@ -42,13 +41,9 @@ import {
   createFixtures,
   shellOf,
   projectionOf,
-  userItem,
-  assistantItem,
-  replayActivityItems,
-  run,
   type DemoThread,
 } from "./fixtures";
-import { scenarios } from "./scenarios";
+import { createReplayPlayer } from "./replay";
 import { demoProviders, demoProviderInstances } from "./providers";
 
 export { DEMO_THREAD_ID };
@@ -134,7 +129,6 @@ export function createDemoEnvironment(random = Math.random) {
   const threads = new Map(createFixtures().map((thread) => [thread.id, thread]));
   const shell = channel<OrchestrationV2ShellStreamItem>();
   const details = new Map<ThreadId, ReturnType<typeof channel<OrchestrationV2ThreadStreamItem>>>();
-  const playback = new Map<ThreadId, ReturnType<typeof setTimeout>>();
   let sequence = 1;
   let nextId = 1;
   const getThread = (id: ThreadId) => {
@@ -169,110 +163,8 @@ export function createDemoEnvironment(random = Math.random) {
     threads.set(thread.id, thread);
     return publish(thread.id);
   };
-  const stop = (id: ThreadId) => {
-    clearTimeout(playback.get(id));
-    playback.delete(id);
-    const thread = getThread(id);
-    return replace({
-      ...thread,
-      runs: thread.runs.map((value) =>
-        value.status === "running"
-          ? { ...value, status: "interrupted", completedAt: now() }
-          : value,
-      ),
-      items: thread.items.map((item) =>
-        item.status === "running"
-          ? {
-              ...item,
-              status: "interrupted",
-              completedAt: now(),
-              ...("streaming" in item ? { streaming: false } : {}),
-            }
-          : item,
-      ),
-    });
-  };
-  const start = (
-    id: ThreadId,
-    text: string,
-    messageId: MessageId,
-    model = getThread(id).modelSelection,
-  ) => {
-    const thread = getThread(id);
-    if (thread.runs.some((value) => value.status === "running"))
-      throw new Error("Stop the active replay before starting another turn.");
-    const runId = RunId.make(`demo-run-${nextId++}`);
-    const scenario = scenarios[Math.floor(random() * scenarios.length)]!;
-    const startedAt = now();
-    const user = {
-      ...userItem(id, runId, messageId, thread.items.length, text),
-      startedAt,
-      updatedAt: startedAt,
-      completedAt: startedAt,
-    };
-    const activity = replayActivityItems(id, runId, thread.items.length + 1, scenario, startedAt);
-    const agent = {
-      ...assistantItem(
-        id,
-        runId,
-        `${runId}-assistant`,
-        thread.items.length + activity.length + 1,
-        "",
-        true,
-      ),
-      startedAt,
-      updatedAt: startedAt,
-    };
-    const replayRun = {
-      ...run(id, runId, thread.runs.length + 1, messageId, model),
-      requestedAt: startedAt,
-      startedAt,
-      completedAt: null,
-      status: "running" as const,
-    };
-    replace({
-      ...thread,
-      modelSelection: model,
-      settled: false,
-      metadata: { ...thread.metadata, updatedAt: startedAt, latestUserMessageAt: startedAt },
-      runs: [...thread.runs, replayRun],
-      items: [...thread.items, user, ...activity, agent],
-    });
-    const words = (scenario.introduction + "\n\n" + scenario.answer).match(/\S+\s*/g) ?? [];
-    let position = 0;
-    let textSoFar = "";
-    const advance = () => {
-      if (!playback.has(id)) return;
-      position += 5;
-      textSoFar = words.slice(0, position).join("");
-      const done = position >= words.length;
-      const current = getThread(id);
-      const items = current.items.map((item) =>
-        item.id === agent.id
-          ? {
-              ...agent,
-              text: textSoFar,
-              streaming: !done,
-              status: done ? ("completed" as const) : ("running" as const),
-              completedAt: done ? now() : null,
-            }
-          : item,
-      );
-      replace({
-        ...current,
-        items,
-        runs: current.runs.map((value) =>
-          value.id === runId && done
-            ? { ...value, status: "completed", completedAt: now() }
-            : value,
-        ),
-      });
-      if (done) playback.delete(id);
-      else playback.set(id, setTimeout(advance, 110));
-    };
-    playback.set(id, setTimeout(advance, 250));
-    return { sequence };
-  };
+  const player = createReplayPlayer(getThread, replace, random);
+  const { start, stop } = player;
   const dispatch = Effect.fn("Demo.dispatch")(function* (input: unknown) {
     const failure = (cause: unknown) =>
       new OrchestrationV2DispatchCommandError({
@@ -294,6 +186,8 @@ export function createDemoEnvironment(random = Math.random) {
         const thread = getThread(command.threadId);
         const metadata = { ...thread.metadata, updatedAt: now() };
         switch (command.type) {
+          case "runtime-request.respond":
+            return player.respond(command.threadId, command.requestId, command);
           case "message.dispatch":
             return start(
               command.threadId,
@@ -697,10 +591,7 @@ export function createDemoEnvironment(random = Math.random) {
     getThread,
     dispatch,
     launch,
-    dispose: () => {
-      for (const timer of playback.values()) clearTimeout(timer);
-      playback.clear();
-    },
+    dispose: player.dispose,
   };
 }
 

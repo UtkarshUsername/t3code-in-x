@@ -1,20 +1,24 @@
 import {
   MessageId,
+  NodeId,
+  PlanId,
   ProjectId,
   ProviderThreadId,
   RunId,
+  RuntimeRequestId,
   ThreadId,
   TurnItemId,
   type ModelSelection,
   type OrchestrationProjectShell,
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2Run,
+  type OrchestrationV2RuntimeRequest,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { scenarios, scenarioFor } from "./scenarios";
+import { scenarioFor, type DemoStep, type DemoTurn } from "./scenarios";
 import { DEFAULT_DEMO_MODEL, demoProviders } from "./providers";
 
 const MODEL = DEFAULT_DEMO_MODEL;
@@ -100,33 +104,91 @@ export function replayActivityItems(
   threadId: ThreadId,
   runId: RunId,
   ordinal: number,
-  scenario: (typeof scenarios)[number],
+  scenario: DemoTurn,
   at = AT,
 ) {
-  return [
-    {
-      ...base(threadId, runId, `${runId}-file`, ordinal),
-      startedAt: at,
-      updatedAt: at,
-      completedAt: at,
-      type: "file_change",
-      fileName: scenario.file,
-      additions: 4,
-      deletions: 1,
-      diffStr: scenario.diff,
-    },
-    {
-      ...base(threadId, runId, `${runId}-command`, ordinal + 1),
-      startedAt: at,
-      updatedAt: at,
-      completedAt: at,
-      type: "command_execution",
-      title: "Run focused tests",
-      input: scenario.command,
-      output: "✓ Focused checks passed (simulated)",
-      exitCode: 0,
-    },
-  ] satisfies OrchestrationV2TurnItem[];
+  const items: OrchestrationV2TurnItem[] = [];
+  for (const step of scenario.steps) {
+    if (step.type === "approval" || step.type === "question") break;
+    const item = replayStepItem(threadId, runId, ordinal + items.length, step, at);
+    const existing = items.findIndex((candidate) => candidate.id === item.id);
+    if (existing === -1) items.push(item);
+    else items[existing] = { ...item, ordinal: items[existing]!.ordinal };
+  }
+  return items;
+}
+
+export function replayStepItem(
+  threadId: ThreadId,
+  runId: RunId,
+  ordinal: number,
+  step: DemoStep,
+  at: DateTime.Utc,
+): OrchestrationV2TurnItem {
+  const common = {
+    ...base(threadId, runId, `${runId}-step-${ordinal}`, ordinal),
+    startedAt: at,
+    updatedAt: at,
+    completedAt: at,
+  };
+  switch (step.type) {
+    case "reasoning":
+      return { ...common, type: "reasoning", text: step.text, streaming: false };
+    case "plan":
+      return {
+        ...common,
+        id: TurnItemId.make(`${runId}-plan`),
+        type: "todo_list",
+        planId: PlanId.make(`${runId}-plan`),
+        steps: step.steps.map((text, index) => ({
+          id: `step-${index}`,
+          text,
+          status:
+            index < step.current ? "completed" : index === step.current ? "running" : "pending",
+        })),
+      };
+    case "read":
+      return {
+        ...common,
+        type: "dynamic_tool",
+        toolName: "read_file",
+        title: `Read ${step.path}`,
+        input: { path: step.path },
+        output: files[step.path] ?? "Demo file contents unavailable.",
+      };
+    case "edit":
+      return { ...common, type: "file_change", fileName: step.file, diffStr: step.diff };
+    case "command":
+      return {
+        ...common,
+        type: "command_execution",
+        title: step.input,
+        input: step.input,
+        output: step.output,
+        exitCode: step.exitCode ?? 0,
+        status: step.exitCode ? "failed" : "completed",
+      };
+    case "approval":
+      return {
+        ...common,
+        type: "approval_request",
+        requestId: RuntimeRequestId.make(common.id),
+        requestKind: "file-change",
+        prompt: step.prompt,
+        fullAccessOverride: "ask_rule",
+        options: [
+          { decision: "accept", label: "Allow once" },
+          { decision: "decline", label: "Decline" },
+        ],
+      };
+    case "question":
+      return {
+        ...common,
+        type: "user_input_request",
+        requestId: RuntimeRequestId.make(common.id),
+        questions: [...step.questions],
+      };
+  }
 }
 
 export function run(
@@ -164,6 +226,8 @@ export interface DemoThread {
   readonly metadata?: Partial<OrchestrationV2ThreadShell>;
   readonly runs: ReadonlyArray<OrchestrationV2Run>;
   readonly items: ReadonlyArray<OrchestrationV2TurnItem>;
+  readonly requests?: ReadonlyArray<OrchestrationV2RuntimeRequest>;
+  readonly continuation?: DemoTurn | undefined;
 }
 
 export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
@@ -186,9 +250,12 @@ export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
     createdBy: "user",
     creationSource: "web",
     latestRunId: latest?.id ?? null,
-    activeRunId: latest?.status === "running" ? latest.id : null,
+    activeRunId: latest && ["running", "waiting"].includes(latest.status) ? latest.id : null,
     status: latest?.status ?? "idle",
-    pendingRuntimeRequest: null,
+    pendingRuntimeRequest: (() => {
+      const request = thread.requests?.find((request) => request.status === "pending");
+      return request ? { id: request.id, kind: request.kind, createdAt: request.createdAt } : null;
+    })(),
     latestVisibleMessage: null,
     latestUserMessageAt: AT,
     hasActionableProposedPlan: false,
@@ -272,9 +339,25 @@ export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjectio
       },
     ],
     providerTurns: [],
-    runtimeRequests: [],
+    runtimeRequests: [...(thread.requests ?? [])],
     messages: [],
-    plans: [],
+    plans: thread.items.flatMap((item) =>
+      item.type === "todo_list"
+        ? [
+            {
+              id: item.planId,
+              threadId: thread.id,
+              runId: item.runId,
+              nodeId: NodeId.make(`${item.runId}-node`),
+              kind: "todo_list" as const,
+              status: item.steps.every((step) => step.status === "completed")
+                ? ("completed" as const)
+                : ("active" as const),
+              steps: item.steps,
+            },
+          ]
+        : [],
+    ),
     turnItems: [...thread.items],
     checkpointScopes: [],
     checkpoints: [],
@@ -309,6 +392,20 @@ export function createFixtures(): DemoThread[] {
       projectIndex: 1,
     },
     {
+      id: "demo-design",
+      title: "Design an accessible empty state",
+      scenario: "design-build",
+      settled: false,
+      projectIndex: 1,
+    },
+    {
+      id: "demo-tour",
+      title: "Tour the project",
+      scenario: "tour",
+      settled: true,
+      projectIndex: 0,
+    },
+    {
       id: "demo-empty",
       title: "Explore the workspace",
       scenario: "feature",
@@ -340,6 +437,7 @@ export function createFixtures(): DemoThread[] {
       title,
       modelSelection: MODEL,
       settled,
+      continuation: selected.next,
       runs: items.length ? [run(threadId, runId, 1, `${id}-user`)] : [],
       items,
     };
@@ -357,4 +455,8 @@ export const files: Readonly<Record<string, string>> = {
   "src/search.ts": "export const uniqueResults = <T,>(items: T[]) => [...new Set(items)];\n",
   "src/autosave.ts":
     "export function autosave(save: () => void) { return setTimeout(save, 300); }\n",
+  "src/schema.ts": "export const version = 1;\n",
+  "src/math.ts":
+    "export const clamp = (n: number, min: number, max: number) => Math.min(n, max);\n",
+  "src/EmptyState.tsx": "export function EmptyState() { return null; }\n",
 };
