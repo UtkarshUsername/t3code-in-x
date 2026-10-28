@@ -56,18 +56,23 @@ export const layer = Layer.effectContext(
       ),
     });
     const registrationStore = Persistence.ConnectionRegistrationStore.of({
-      register: (registration, routes) =>
+      register: Effect.fn("DemoConnectionRegistrationStore.register")((registration, routes) =>
         Ref.update(catalog, (document) =>
           registerConnectionInCatalog(document, registration, routes),
         ),
-      setRoutes: (environmentId, routes) =>
+      ),
+      setRoutes: Effect.fn("DemoConnectionRegistrationStore.setRoutes")((environmentId, routes) =>
         Ref.update(catalog, (document) => setRoutesInCatalog(document, environmentId, routes)),
-      remove: (environmentId) =>
+      ),
+      remove: Effect.fn("DemoConnectionRegistrationStore.remove")((environmentId) =>
         Ref.update(catalog, (document) => removeConnectionFromCatalog(document, environmentId)),
-      setEnabled: (environmentId, enabled) =>
-        Ref.update(catalog, (document) =>
-          setConnectionEnabledInCatalog(document, environmentId, enabled),
-        ),
+      ),
+      setEnabled: Effect.fn("DemoConnectionRegistrationStore.setEnabled")(
+        (environmentId, enabled) =>
+          Ref.update(catalog, (document) =>
+            setConnectionEnabledInCatalog(document, environmentId, enabled),
+          ),
+      ),
     });
     const profileStore = ProfileStore.make({
       get: (connectionId) =>
@@ -142,46 +147,60 @@ export const layer = Layer.effectContext(
         })),
     });
     const cacheStore = Persistence.EnvironmentCacheStore.of({
-      loadShell: (environmentId) =>
+      loadShell: Effect.fn("DemoEnvironmentCacheStore.loadShell")((environmentId) =>
         Effect.sync(() => Option.fromUndefinedOr(shell.get(environmentId))),
-      saveShell: (environmentId, snapshot) =>
+      ),
+      saveShell: Effect.fn("DemoEnvironmentCacheStore.saveShell")((environmentId, snapshot) =>
         Effect.sync(() => {
           shell.set(environmentId, snapshot);
         }),
-      loadThread: (environmentId, threadId) =>
+      ),
+      loadThread: Effect.fn("DemoEnvironmentCacheStore.loadThread")((environmentId, threadId) =>
         Effect.sync(() => Option.fromUndefinedOr(threads.get(cacheKey(environmentId, threadId)))),
-      saveThread: (environmentId, snapshot) =>
+      ),
+      saveThread: Effect.fn("DemoEnvironmentCacheStore.saveThread")((environmentId, snapshot) =>
         Effect.sync(() => {
           threads.set(cacheKey(environmentId, snapshot.projection.thread.id), snapshot);
         }),
-      removeThread: (environmentId, threadId) =>
+      ),
+      removeThread: Effect.fn("DemoEnvironmentCacheStore.removeThread")((environmentId, threadId) =>
         Effect.sync(() => {
           threads.delete(cacheKey(environmentId, threadId));
         }),
-      loadServerConfig: (environmentId) =>
+      ),
+      loadServerConfig: Effect.fn("DemoEnvironmentCacheStore.loadServerConfig")((environmentId) =>
         Effect.sync(() => Option.fromUndefinedOr(configs.get(environmentId))),
-      saveServerConfig: (environmentId, config) =>
-        Effect.sync(() => {
-          configs.set(environmentId, config);
-        }),
-      loadVcsRefs: (environmentId, cwd) =>
+      ),
+      saveServerConfig: Effect.fn("DemoEnvironmentCacheStore.saveServerConfig")(
+        (environmentId, config) =>
+          Effect.sync(() => {
+            configs.set(environmentId, config);
+          }),
+      ),
+      loadVcsRefs: Effect.fn("DemoEnvironmentCacheStore.loadVcsRefs")((environmentId, cwd) =>
         Effect.sync(() => Option.fromUndefinedOr(refs.get(cacheKey(environmentId, cwd)))),
-      saveVcsRefs: (environmentId, cwd, value) =>
+      ),
+      saveVcsRefs: Effect.fn("DemoEnvironmentCacheStore.saveVcsRefs")((environmentId, cwd, value) =>
         Effect.sync(() => {
           refs.set(cacheKey(environmentId, cwd), value);
         }),
-      removeVcsRefs: (environmentId, cwd) =>
+      ),
+      removeVcsRefs: Effect.fn("DemoEnvironmentCacheStore.removeVcsRefs")((environmentId, cwd) =>
         Effect.sync(() => {
           refs.delete(cacheKey(environmentId, cwd));
         }),
-      clearVcsRefs: (environmentId) => Effect.sync(() => clearKeys(refs, environmentId)),
-      clear: (environmentId) =>
+      ),
+      clearVcsRefs: Effect.fn("DemoEnvironmentCacheStore.clearVcsRefs")((environmentId) =>
+        Effect.sync(() => clearKeys(refs, environmentId)),
+      ),
+      clear: Effect.fn("DemoEnvironmentCacheStore.clear")((environmentId) =>
         Effect.sync(() => {
           shell.delete(environmentId);
           configs.delete(environmentId);
           clearKeys(threads, environmentId);
           clearKeys(refs, environmentId);
         }),
+      ),
     });
 
     return Context.make(Persistence.ConnectionTargetStore, targetStore).pipe(
