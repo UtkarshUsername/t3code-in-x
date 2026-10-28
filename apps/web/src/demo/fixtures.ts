@@ -100,7 +100,7 @@ export function assistantItem(
   } satisfies OrchestrationV2TurnItem;
 }
 
-export function replayActivityItems(
+function replayActivityItems(
   threadId: ThreadId,
   runId: RunId,
   ordinal: number,
