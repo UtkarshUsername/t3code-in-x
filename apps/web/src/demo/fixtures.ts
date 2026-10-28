@@ -300,6 +300,8 @@ export const files: Readonly<Record<string, string>> = {
   "src/App.tsx":
     "export function App() { return <main><h1>Orbit</h1><p>Your ideas, in motion.</p></main>; }\n",
   "src/CommandMenu.tsx":
+    'export function CommandMenu() {\n  return <Command label="Jump to a project or thread" />;\n}\n',
+  "src/CommandMenu.tsx":
     'export function CommandMenu() { return <Command label="Jump to a project or thread" />; }\n',
   "src/search.ts": "export const uniqueResults = <T,>(items: T[]) => [...new Set(items)];\n",
   "src/autosave.ts":
