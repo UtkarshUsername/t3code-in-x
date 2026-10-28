@@ -572,6 +572,11 @@ it.effect(
         });
         yield* dispatch({ type: "queued-run.cancel", runId: queued.queuedRuns[2]!.run.id });
         expect(
+          projectionOf(environment.getThread(DEMO_THREAD_ID)).messages.some(
+            (message) => message.id === "cancelled",
+          ),
+        ).toBe(true);
+        expect(
           deriveThreadQueueWorkflowState(
             projectionOf(environment.getThread(DEMO_THREAD_ID)),
           ).queuedRuns.map((run) => run.text),

@@ -435,9 +435,6 @@ export function createReplayPlayer(
                 }
               : run,
           ),
-          queuedMessages: (thread.queuedMessages ?? []).filter(
-            (message) => message.id !== queued.userMessageId,
-          ),
         });
       case "queued-run.edit":
         return replace({
