@@ -189,15 +189,24 @@ export function createDemoEnvironment(firstScenario = 0) {
           case "runtime-request.respond":
             return player.respond(command.threadId, command.requestId, command);
           case "message.dispatch":
-            return start(
-              command.threadId,
-              command.text,
-              command.messageId,
-              command.modelSelection ?? thread.modelSelection,
-            );
+            return player.dispatchMessage(command);
           case "thread.stop":
-          case "run.interrupt":
             return stop(command.threadId);
+          case "run.interrupt":
+            if (
+              !thread.runs.some(
+                (run) => run.id === command.runId && ["running", "waiting"].includes(run.status),
+              )
+            )
+              throw new Error("That replay is no longer active.");
+            return player.interrupt(command.threadId, command.holdQueue ?? true);
+          case "queue.resume":
+          case "queued-run.start":
+          case "queued-run.cancel":
+          case "queued-run.edit":
+          case "queued-run.reorder":
+          case "queued-message.promote-to-steer":
+            return player.queueCommand(command);
           case "thread.metadata.update":
             return replace({
               ...thread,

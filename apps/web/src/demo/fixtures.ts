@@ -3,7 +3,10 @@ import {
   NodeId,
   PlanId,
   ProjectId,
+  ProviderSessionId,
   ProviderThreadId,
+  ProviderTurnId,
+  RunAttemptId,
   RunId,
   RuntimeRequestId,
   ThreadId,
@@ -12,6 +15,7 @@ import {
   type OrchestrationProjectShell,
   type OrchestrationV2ProjectedTurnItem,
   type OrchestrationV2Run,
+  type OrchestrationV2ConversationMessage,
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
@@ -20,6 +24,12 @@ import {
 import * as DateTime from "effect/DateTime";
 import { scenarioFor, type DemoStep, type DemoTurn } from "./scenarios";
 import { DEFAULT_DEMO_MODEL, demoProviders } from "./providers";
+import { demoCapabilities } from "./capabilities";
+
+const providerThreadId = (id: ThreadId, instanceId: ModelSelection["instanceId"]) =>
+  ProviderThreadId.make(`demo-provider-${id}-${instanceId}`);
+export const demoSessionId = (id: ThreadId, instanceId: ModelSelection["instanceId"]) =>
+  ProviderSessionId.make(`demo-session-${id}-${instanceId}`);
 
 const MODEL = DEFAULT_DEMO_MODEL;
 const AT = DateTime.makeUnsafe("2026-10-28T09:00:00.000Z");
@@ -204,10 +214,10 @@ export function run(
     ordinal,
     providerInstanceId: modelSelection.instanceId,
     modelSelection,
-    providerThreadId: null,
+    providerThreadId: providerThreadId(threadId, modelSelection.instanceId),
     userMessageId: MessageId.make(userMessageId),
-    rootNodeId: null,
-    activeAttemptId: null,
+    rootNodeId: NodeId.make(`${id}-node`),
+    activeAttemptId: RunAttemptId.make(`${id}-attempt`),
     status: "completed",
     requestedAt: AT,
     startedAt: AT,
@@ -228,10 +238,13 @@ export interface DemoThread {
   readonly items: ReadonlyArray<OrchestrationV2TurnItem>;
   readonly requests?: ReadonlyArray<OrchestrationV2RuntimeRequest>;
   readonly continuation?: DemoTurn | undefined;
+  readonly queuedMessages?: ReadonlyArray<OrchestrationV2ConversationMessage>;
 }
 
 export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
-  const latest = thread.runs.at(-1);
+  const active = thread.runs.findLast((run) => ["running", "waiting"].includes(run.status));
+  const latest =
+    active ?? thread.runs.findLast((run) => run.status !== "queued") ?? thread.runs.at(-1);
   return {
     id: thread.id,
     projectId: thread.projectId,
@@ -242,15 +255,15 @@ export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
     interactionMode: "default",
     branch: "main",
     worktreePath: null,
-    activeProviderThreadId: ProviderThreadId.make(
-      `demo-provider-${thread.id}-${thread.modelSelection.instanceId}`,
-    ),
+    activeProviderThreadId: providerThreadId(thread.id, thread.modelSelection.instanceId),
     lineage: { rootThreadId: thread.id, parentThreadId: null, relationshipToParent: null },
     forkedFrom: null,
     createdBy: "user",
     creationSource: "web",
     latestRunId: latest?.id ?? null,
-    activeRunId: latest && ["running", "waiting"].includes(latest.status) ? latest.id : null,
+    activeRunId: active?.id ?? null,
+    activityRunStatus: active?.status === "waiting" ? "waiting" : active ? "running" : null,
+    activityRunStartedAt: active?.startedAt ?? null,
     status: latest?.status ?? "idle",
     pendingRuntimeRequest: (() => {
       const request = thread.requests?.find((request) => request.status === "pending");
@@ -274,9 +287,26 @@ export function shellOf(thread: DemoThread): OrchestrationV2ThreadShell {
 
 export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjection {
   const shell = shellOf(thread);
-  const driver = demoProviders.find(
-    (provider) => provider.instanceId === thread.modelSelection.instanceId,
-  )!.driver;
+  const instanceIds = [
+    ...new Set([
+      thread.modelSelection.instanceId,
+      ...thread.runs.map((run) => run.providerInstanceId),
+    ]),
+  ];
+  const driverFor = (instanceId: ModelSelection["instanceId"]) =>
+    demoProviders.find((provider) => provider.instanceId === instanceId)!.driver;
+  const executions = thread.runs.filter((run) => run.startedAt !== null);
+  const executionStatus = (run: OrchestrationV2Run) => {
+    switch (run.status) {
+      case "completed":
+      case "interrupted":
+      case "failed":
+      case "cancelled":
+        return run.status;
+      default:
+        return "running" as const;
+    }
+  };
   const visibleTurnItems: OrchestrationV2ProjectedTurnItem[] = thread.items.map(
     (item, position) => ({
       position,
@@ -311,36 +341,119 @@ export function projectionOf(thread: DemoThread): OrchestrationV2ThreadProjectio
       deletedAt: shell.deletedAt,
     },
     runs: [...thread.runs],
-    attempts: [],
-    nodes: [],
+    attempts: executions.map((run) => ({
+      id: run.activeAttemptId!,
+      runId: run.id,
+      attemptOrdinal: 1,
+      rootNodeId: run.rootNodeId!,
+      providerInstanceId: run.providerInstanceId,
+      providerThreadId: run.providerThreadId!,
+      providerTurnId: ProviderTurnId.make(`${run.id}-turn`),
+      reason: "initial",
+      status: executionStatus(run),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+    })),
+    nodes: executions.map((run) => ({
+      id: run.rootNodeId!,
+      threadId: thread.id,
+      runId: run.id,
+      parentNodeId: null,
+      rootNodeId: run.rootNodeId!,
+      kind: "root_turn",
+      status: run.status === "waiting" ? "waiting" : executionStatus(run),
+      countsForRun: true,
+      providerThreadId: run.providerThreadId,
+      providerTurnId: ProviderTurnId.make(`${run.id}-turn`),
+      nativeItemRef: null,
+      runtimeRequestId:
+        thread.requests?.find(
+          (request) => request.nodeId === run.rootNodeId && request.status === "pending",
+        )?.id ?? null,
+      checkpointScopeId: null,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+    })),
     subagents: [],
-    providerSessions: [],
-    providerThreads: [
-      {
-        id: shell.activeProviderThreadId!,
-        driver,
-        providerInstanceId: thread.modelSelection.instanceId,
-        providerSessionId: null,
-        appThreadId: thread.id,
-        ownerNodeId: null,
-        nativeThreadRef: { driver, nativeId: thread.id, strength: "strong" },
-        nativeConversationHeadRef: null,
-        status: shell.activeRunId === null ? "idle" : "active",
-        firstRunOrdinal: null,
-        lastRunOrdinal: null,
-        handoffIds: [],
-        forkedFrom: null,
-        pendingBackgroundTasks: [],
-        contextUsage: null,
-        nativeMetadata: null,
-        goal: null,
-        createdAt: shell.createdAt,
-        updatedAt: shell.updatedAt,
-      },
-    ],
-    providerTurns: [],
+    providerSessions: instanceIds.map((instanceId) => ({
+      id: demoSessionId(thread.id, instanceId),
+      driver: driverFor(instanceId),
+      providerInstanceId: instanceId,
+      status:
+        shell.activeRunId !== null && thread.modelSelection.instanceId === instanceId
+          ? "running"
+          : "ready",
+      cwd: projects.find((project) => project.id === thread.projectId)!.workspaceRoot,
+      model:
+        instanceId === thread.modelSelection.instanceId
+          ? thread.modelSelection.model
+          : (executions.findLast((run) => run.providerInstanceId === instanceId)?.modelSelection
+              .model ?? null),
+      capabilities: demoCapabilities,
+      createdAt: shell.createdAt,
+      updatedAt: shell.updatedAt,
+      lastError: null,
+    })),
+    providerThreads: instanceIds.map((instanceId) => ({
+      id: providerThreadId(thread.id, instanceId),
+      driver: driverFor(instanceId),
+      providerInstanceId: instanceId,
+      providerSessionId: demoSessionId(thread.id, instanceId),
+      appThreadId: thread.id,
+      ownerNodeId: null,
+      nativeThreadRef: { driver: driverFor(instanceId), nativeId: thread.id, strength: "strong" },
+      nativeConversationHeadRef: null,
+      status:
+        shell.activeRunId !== null && instanceId === thread.modelSelection.instanceId
+          ? "active"
+          : "idle",
+      firstRunOrdinal: null,
+      lastRunOrdinal: null,
+      handoffIds: [],
+      forkedFrom: null,
+      pendingBackgroundTasks: [],
+      contextUsage: null,
+      nativeMetadata: null,
+      goal: null,
+      createdAt: shell.createdAt,
+      updatedAt: shell.updatedAt,
+    })),
+    providerTurns: executions.map((run) => ({
+      id: ProviderTurnId.make(`${run.id}-turn`),
+      providerThreadId: run.providerThreadId!,
+      nodeId: run.rootNodeId!,
+      runAttemptId: run.activeAttemptId,
+      nativeTurnRef: null,
+      ordinal: run.ordinal,
+      status: executionStatus(run),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+    })),
     runtimeRequests: [...(thread.requests ?? [])],
-    messages: [],
+    messages: [
+      ...(thread.queuedMessages ?? []),
+      ...thread.items.flatMap((item): OrchestrationV2ConversationMessage[] =>
+        item.type === "user_message" || item.type === "assistant_message"
+          ? [
+              {
+                id: item.messageId,
+                threadId: thread.id,
+                runId: item.runId,
+                nodeId: item.nodeId,
+                role: item.type === "user_message" ? "user" : "assistant",
+                text: item.text,
+                attachments: item.attachments ?? [],
+                streaming: item.type === "assistant_message" && item.streaming,
+                createdBy: item.type === "user_message" ? item.createdBy : "agent",
+                creationSource: "web",
+                createdAt: item.startedAt ?? item.updatedAt,
+                updatedAt: item.updatedAt,
+                ...(item.type === "user_message" && item.context ? { context: item.context } : {}),
+              },
+            ]
+          : [],
+      ),
+    ],
     plans: thread.items.flatMap((item) =>
       item.type === "todo_list"
         ? [

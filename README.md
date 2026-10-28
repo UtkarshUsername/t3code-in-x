@@ -15,6 +15,8 @@ Open the URL printed by Vite. The two fictional projects include completed, sett
 
 Thinking streams, plans update, and tools move from running to completed. Approvals and questions pause the replay until you answer. Declining an approval skips the simulated edit; stopping a turn cancels its pending requests. All of these interactions use the original T3 Code controls.
 
+While a replay is running, steer to interrupt it and play the next scenario, or queue messages to play subsequent scenarios in order. The queue supports editing, reordering, cancellation, and promotion to steer. Stopping a turn holds its queue until you send a queued message now or resume it.
+
 Thread creation, follow-ups, cancellation, renaming, settling/reopening, archiving, deletion, file browsing, and diffs run locally. Operations requiring a real environment, such as shell execution, git pushes, pairing, and provider installation, report that they are unavailable. The frontend components and layout are unchanged.
 
 All demo state, preferences, and drafts are temporary. Refreshing restores the seeded workspace. There is no persistent database or browser-storage requirement.

@@ -19,7 +19,10 @@ import * as Stream from "effect/Stream";
 import { createDemoEnvironment, DEMO_THREAD_ID, demoConfig } from "./environment";
 import { projects, projectionOf } from "./fixtures";
 import { isProviderInstancePickerReady, providerInstanceEntriesFor } from "../providerInstances";
-import { threadSupportsProviderHandoff } from "@t3tools/client-runtime/state/thread-workflows";
+import {
+  deriveThreadQueueWorkflowState,
+  threadSupportsProviderHandoff,
+} from "@t3tools/client-runtime/state/thread-workflows";
 import { derivePendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
 import { scenarios } from "./scenarios";
 
@@ -517,6 +520,222 @@ it.effect("serves files and diffs locally and rejects unsupported execution imme
       expect(initial._tag).toBe("Some");
     } finally {
       environment.dispose();
+    }
+  }),
+);
+
+it.effect(
+  "edits, reorders, and cancels queued messages before playing scenarios in delivery order",
+  () =>
+    Effect.gen(function* () {
+      vi.useFakeTimers();
+      const environment = createDemoEnvironment();
+      const dispatch = (input: Record<string, unknown>) =>
+        environment.dispatch({
+          commandId: CommandId.make("queue-controls"),
+          threadId: DEMO_THREAD_ID,
+          ...input,
+        });
+      const send = (id: string, queued = true) =>
+        dispatch({
+          type: "message.dispatch",
+          messageId: MessageId.make(id),
+          text: id,
+          attachments: [],
+          createdBy: "user",
+          creationSource: "web",
+          dispatchMode: { type: queued ? "queue_after_active" : "start_immediately" },
+        });
+      try {
+        yield* send("active", false);
+        const activeId = environment.getThread(DEMO_THREAD_ID).runs.at(-1)!.id;
+        yield* send("first");
+        yield* send("second");
+        yield* send("cancelled");
+        const queued = deriveThreadQueueWorkflowState(
+          projectionOf(environment.getThread(DEMO_THREAD_ID)),
+        );
+        expect(queued.activeRun?.id).toBe(activeId);
+        expect(queued.canPromoteToSteer).toBe(true);
+        expect(queued.queuedRuns.map((run) => run.text)).toEqual(["first", "second", "cancelled"]);
+        expect(isProjection(projectionOf(environment.getThread(DEMO_THREAD_ID)))).toBe(true);
+        expect(isShell(environment.snapshot())).toBe(true);
+        yield* dispatch({
+          type: "queued-run.edit",
+          runId: queued.queuedRuns[1]!.run.id,
+          text: "edited second",
+        });
+        yield* dispatch({
+          type: "queued-run.reorder",
+          runId: queued.queuedRuns[1]!.run.id,
+          beforeRunId: queued.queuedRuns[0]!.run.id,
+        });
+        yield* dispatch({ type: "queued-run.cancel", runId: queued.queuedRuns[2]!.run.id });
+        expect(
+          deriveThreadQueueWorkflowState(
+            projectionOf(environment.getThread(DEMO_THREAD_ID)),
+          ).queuedRuns.map((run) => run.text),
+        ).toEqual(["edited second", "first"]);
+        yield* Effect.promise(() => vi.runAllTimersAsync());
+        const completed = environment.getThread(DEMO_THREAD_ID);
+        expect(
+          completed.items
+            .filter((item) => item.type === "user_message")
+            .slice(-3)
+            .map((item) => item.text),
+        ).toEqual(["active", "edited second", "first"]);
+        expect(
+          completed.items
+            .filter((item) => item.type === "assistant_message")
+            .slice(-3)
+            .map((item) => item.text),
+        ).toEqual(scenarios.slice(0, 3).map((scenario) => scenario.answer));
+        expect(completed.runs.find((run) => run.userMessageId === "cancelled")?.status).toBe(
+          "cancelled",
+        );
+        expect(deriveThreadQueueWorkflowState(projectionOf(completed)).queuedRuns).toEqual([]);
+        expect(isProjection(projectionOf(completed))).toBe(true);
+        expect(
+          environment.snapshot().threads.find((thread) => thread.id === DEMO_THREAD_ID)?.status,
+        ).toBe("completed");
+      } finally {
+        environment.dispose();
+        vi.useRealTimers();
+      }
+    }),
+);
+
+it.effect(
+  "steers to the next scenario without dropping queued messages or accepting stale targets",
+  () =>
+    Effect.gen(function* () {
+      vi.useFakeTimers();
+      const environment = createDemoEnvironment();
+      const dispatch = (input: Record<string, unknown>) =>
+        environment.dispatch({
+          commandId: CommandId.make("steering"),
+          threadId: DEMO_THREAD_ID,
+          ...input,
+        });
+      const send = (id: string, mode: unknown) =>
+        dispatch({
+          type: "message.dispatch",
+          messageId: MessageId.make(id),
+          text: id,
+          attachments: [],
+          createdBy: "user",
+          creationSource: "web",
+          dispatchMode: mode,
+        });
+      try {
+        yield* send("original", { type: "start_immediately" });
+        yield* Effect.promise(() => vi.advanceTimersByTimeAsync(250));
+        const original = environment.getThread(DEMO_THREAD_ID).runs.at(-1)!;
+        yield* send("queued after steer", { type: "queue_after_active" });
+        yield* send("steering", { type: "steer_active", targetRunId: original.id });
+        const steered = environment.getThread(DEMO_THREAD_ID);
+        expect(steered.items.at(-1)).toMatchObject({ type: "user_message", inputIntent: "steer" });
+        expect(steered.runs.find((run) => run.id === original.id)?.status).toBe("interrupted");
+        expect(deriveThreadQueueWorkflowState(projectionOf(steered)).queuedRuns).toHaveLength(1);
+        const stale = yield* Effect.exit(
+          send("stale", { type: "steer_active", targetRunId: original.id }),
+        );
+        expect(Exit.isFailure(stale)).toBe(true);
+        yield* Effect.promise(() => vi.runAllTimersAsync());
+        const completed = environment.getThread(DEMO_THREAD_ID);
+        expect(
+          completed.items.some((item) => item.runId === original.id && item.type === "file_change"),
+        ).toBe(false);
+        expect(
+          completed.items
+            .filter((item) => item.type === "assistant_message")
+            .slice(-2)
+            .map((item) => item.text),
+        ).toEqual(scenarios.slice(1, 3).map((scenario) => scenario.answer));
+        yield* send("next after idle", { type: "start_immediately" });
+        yield* Effect.promise(() => vi.runAllTimersAsync());
+        expect(environment.getThread(DEMO_THREAD_ID).requests?.at(-1)?.status).toBe("pending");
+      } finally {
+        environment.dispose();
+        vi.useRealTimers();
+      }
+    }),
+);
+
+it.effect("promotes queued work, holds it on stop, and supports send-now and resume", () =>
+  Effect.gen(function* () {
+    vi.useFakeTimers();
+    const environment = createDemoEnvironment();
+    const dispatch = (input: Record<string, unknown>) =>
+      environment.dispatch({
+        commandId: CommandId.make("queue-resume"),
+        threadId: DEMO_THREAD_ID,
+        ...input,
+      });
+    const send = (id: string, queued = true) =>
+      dispatch({
+        type: "message.dispatch",
+        messageId: MessageId.make(id),
+        text: id,
+        attachments: [],
+        createdBy: "user",
+        creationSource: "web",
+        dispatchMode: { type: queued ? "queue_after_active" : "start_immediately" },
+      });
+    try {
+      yield* send("active", false);
+      const active = environment.getThread(DEMO_THREAD_ID).runs.at(-1)!;
+      yield* send("first");
+      yield* send("promote");
+      yield* send("last");
+      const queue = deriveThreadQueueWorkflowState(
+        projectionOf(environment.getThread(DEMO_THREAD_ID)),
+      ).queuedRuns;
+      yield* dispatch({
+        type: "queued-message.promote-to-steer",
+        queuedRunId: queue[1]!.run.id,
+        targetRunId: active.id,
+      });
+      expect(environment.getThread(DEMO_THREAD_ID).runs.at(-1)?.userMessageId).toBe("promote");
+      expect(environment.getThread(DEMO_THREAD_ID).items.at(-1)).toMatchObject({
+        type: "user_message",
+        inputIntent: "promoted_queued_to_steer",
+      });
+      yield* dispatch({ type: "thread.stop" });
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      const held = deriveThreadQueueWorkflowState(
+        projectionOf(environment.getThread(DEMO_THREAD_ID)),
+      );
+      expect(held.isHeld).toBe(true);
+      expect(held.activeRun).toBeNull();
+      expect(held.queuedRuns).toHaveLength(2);
+      yield* dispatch({ type: "queued-run.start", runId: queue[0]!.run.id });
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      const afterSend = deriveThreadQueueWorkflowState(
+        projectionOf(environment.getThread(DEMO_THREAD_ID)),
+      );
+      expect(afterSend.activeRun).toBeNull();
+      expect(afterSend.isHeld).toBe(true);
+      expect(afterSend.queuedRuns).toHaveLength(1);
+      yield* dispatch({ type: "queue.resume" });
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      const waiting = environment.getThread(DEMO_THREAD_ID);
+      expect(waiting.runs.at(-1)?.userMessageId).toBe("last");
+      expect(waiting.requests?.at(-1)?.status).toBe("pending");
+      expect(isProjection(projectionOf(waiting))).toBe(true);
+      yield* dispatch({
+        type: "runtime-request.respond",
+        requestId: waiting.requests!.at(-1)!.id,
+        decision: "decline",
+      });
+      yield* Effect.promise(() => vi.runAllTimersAsync());
+      expect(
+        deriveThreadQueueWorkflowState(projectionOf(environment.getThread(DEMO_THREAD_ID)))
+          .queuedRuns,
+      ).toEqual([]);
+    } finally {
+      environment.dispose();
+      vi.useRealTimers();
     }
   }),
 );
