@@ -16,8 +16,9 @@ const model = (slug: string, name: string) => ({
 
 const codexModels = [
   model("gpt-6.2-sol", "GPT 6.2 Sol"),
-  model("astra-6.1", "Astra 6.1"),
-  model("luna-6.2", "Luna 6.2"),
+  model("gpt-6.1-astra", "GPT 6.1 Astra"),
+  model("gpt-6.1-luna", "GPT 6.1 Luna"),
+  model("gpt-6.2-terra", "GPT 6.2 Terra"),
 ];
 const claudeModels = [
   model("claude-fable-5.5", "Claude Fable 5.5"),
