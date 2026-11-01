@@ -26,6 +26,8 @@ import {
 import { derivePendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
 import { scenarios } from "./scenarios";
 import { getComposerReasoningStep } from "../components/chat/composerProviderState";
+import { getTraitsSectionVisibility } from "../components/chat/TraitsPicker";
+import { buildTraitsTriggerDisplay } from "@t3tools/client-runtime/model-traits";
 
 const isProjection = Schema.is(OrchestrationV2ThreadProjection);
 const isShell = Schema.is(OrchestrationV2ShellSnapshot);
@@ -65,6 +67,37 @@ it.effect("launches an independent thread and completes a replay with tools and 
       }
       for (const provider of demoConfig.providers) {
         for (const model of provider.models) {
+          const supportsSpeed = ["codex", "claudeAgent", "cursor"].includes(provider.driver);
+          const input = {
+            provider: provider.driver,
+            models: provider.models,
+            model: model.slug,
+            planModeEnabled: true,
+          };
+          const standard = getTraitsSectionVisibility(input);
+          expect(
+            standard.fastModeDescriptor !== null ||
+              standard.selectDescriptors.some((descriptor) => descriptor.id === "serviceTier"),
+            `${provider.displayName}: ${model.name} speed control`,
+          ).toBe(supportsSpeed);
+          const speed = {
+            id: provider.driver === "codex" ? "serviceTier" : "fastMode",
+            value: provider.driver === "codex" ? "fast" : true,
+          };
+          for (const fast of supportsSpeed ? [false, true] : [false]) {
+            const traits = getTraitsSectionVisibility({
+              ...input,
+              modelOptions: fast ? [speed] : undefined,
+            });
+            expect(
+              buildTraitsTriggerDisplay({
+                provider: provider.driver,
+                descriptors: traits.descriptors,
+                primarySelectDescriptorId: traits.primarySelectDescriptor?.id ?? null,
+                ultrathinkPromptControlled: false,
+              }).speedLabel,
+            ).toBe(fast ? "Fast" : null);
+          }
           expect(
             getComposerReasoningStep({
               provider: provider.driver,
@@ -78,7 +111,7 @@ it.effect("launches an independent thread and completes a replay with tools and 
               direction: 1,
             })?.modelOptions,
             `${provider.displayName}: ${model.name}`,
-          ).toEqual([{ id: "reasoningEffort", value: "xhigh" }]);
+          ).toEqual(expect.arrayContaining([{ id: "reasoningEffort", value: "xhigh" }]));
         }
       }
       const seeded = environment.getThread(DEMO_THREAD_ID).items;
@@ -97,6 +130,7 @@ it.effect("launches an independent thread and completes a replay with tools and 
         modelSelection: {
           instanceId: ProviderInstanceId.make("claudeAgent"),
           model: "claude-fable-5.5",
+          options: [{ id: "fastMode", value: true }],
         },
         runtimeMode: "full-access",
         interactionMode: "default",
@@ -142,6 +176,9 @@ it.effect("launches an independent thread and completes a replay with tools and 
       expect(isProjection(projectionOf(completed))).toBe(true);
       expect(isShell(environment.snapshot())).toBe(true);
       expect(completed.runs.at(-1)?.providerInstanceId).toBe("claudeAgent");
+      expect(completed.runs.at(-1)?.modelSelection.options).toEqual([
+        { id: "fastMode", value: true },
+      ]);
       yield* environment.dispatch({
         type: "message.dispatch",
         commandId: CommandId.make("cycle-follow-up"),

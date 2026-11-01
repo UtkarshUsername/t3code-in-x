@@ -3,6 +3,7 @@ import {
   ProviderDriverKind,
   type ModelSelection,
   type ProviderInstanceConfig,
+  type ProviderOptionDescriptor,
   type ServerProvider,
   type ServerProviderModel,
 } from "@t3tools/contracts";
@@ -67,6 +68,23 @@ const openCodeModels = [
 
 function provider(driver: string, displayName: string, models: ReadonlyArray<ServerProviderModel>) {
   const driverKind = ProviderDriverKind.make(driver);
+  const speedOptions: ReadonlyArray<ProviderOptionDescriptor> =
+    driver === "codex"
+      ? [
+          {
+            id: "serviceTier",
+            label: "Service Tier",
+            type: "select",
+            currentValue: "default",
+            options: [
+              { id: "default", label: "Standard", isDefault: true },
+              { id: "fast", label: "Fast" },
+            ],
+          },
+        ]
+      : driver === "claudeAgent" || driver === "cursor"
+        ? [{ id: "fastMode", label: "Fast Mode", type: "boolean", currentValue: false }]
+        : [];
   return {
     instanceId: defaultInstanceIdForDriver(driverKind),
     driver: driverKind,
@@ -77,7 +95,14 @@ function provider(driver: string, displayName: string, models: ReadonlyArray<Ser
     status: "ready",
     auth: { status: "authenticated" },
     checkedAt: "2026-10-28T09:00:00.000Z",
-    models: models.map((entry, index) => ({ ...entry, isDefault: index === 0 })),
+    models: models.map((entry, index) => ({
+      ...entry,
+      isDefault: index === 0,
+      capabilities: {
+        ...entry.capabilities,
+        optionDescriptors: [...(entry.capabilities?.optionDescriptors ?? []), ...speedOptions],
+      },
+    })),
     slashCommands: [],
     skills: [],
   } satisfies ServerProvider;
