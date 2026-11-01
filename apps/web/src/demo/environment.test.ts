@@ -78,7 +78,7 @@ it.effect("launches an independent thread and completes a replay with tools and 
               direction: 1,
             })?.modelOptions,
             `${provider.displayName}: ${model.name}`,
-          ).toEqual([{ id: "reasoningEffort", value: "high" }]);
+          ).toEqual([{ id: "reasoningEffort", value: "xhigh" }]);
         }
       }
       const seeded = environment.getThread(DEMO_THREAD_ID).items;
