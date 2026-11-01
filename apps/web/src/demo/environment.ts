@@ -623,7 +623,7 @@ export const demoDriverLayer = Layer.succeed(
       });
     }),
     preflight: Effect.fn("Demo.preflight")(function* () {
-      return yield* Effect.succeed(true);
+      return yield* Effect.succeed("ready" as const);
     }),
     checkHost: Effect.fn("Demo.checkHost")(function* () {
       return yield* Effect.succeed("unchecked" as const);
