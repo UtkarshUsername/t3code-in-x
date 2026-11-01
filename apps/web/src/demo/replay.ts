@@ -103,6 +103,11 @@ export function createReplayPlayer(
       throw new Error("Stop the active replay before starting another turn.");
     const turn = thread.continuation ?? scenarios[nextScenario++ % scenarios.length]!;
     const runId = queuedRun?.id ?? RunId.make(`demo-run-${nextRun++}`);
+    const fast = model.options?.some(
+      ({ id, value }) =>
+        (id === "fastMode" && value === true) || (id === "serviceTier" && value === "fast"),
+    );
+    const textInterval = 110 / (fast ? 1.5 : 1);
     const queuedMessage = thread.queuedMessages?.find((message) => message.id === messageId);
     const at = DateTime.nowUnsafe();
     const state: NonNullable<ReturnType<typeof playback.get>> = {};
@@ -156,9 +161,9 @@ export function createReplayPlayer(
           completedAt: complete ? DateTime.nowUnsafe() : null,
         });
         if (complete) done();
-        else schedule(advance, 110);
+        else schedule(advance, textInterval);
       };
-      schedule(advance, 110);
+      schedule(advance, textInterval);
     };
     let answers = "";
     const finish = (answer: string) => {
