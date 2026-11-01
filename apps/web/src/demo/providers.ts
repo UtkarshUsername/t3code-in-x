@@ -34,8 +34,8 @@ const model = (slug: string, name: string) =>
   }) satisfies ServerProviderModel;
 
 const codexModels = [
+  model("gpt-6.2-astra", "GPT 6.2 Astra"),
   model("gpt-6.2-sol", "GPT 6.2 Sol"),
-  model("gpt-6.1-astra", "GPT 6.1 Astra"),
   model("gpt-6.1-luna", "GPT 6.1 Luna"),
   model("gpt-6.2-terra", "GPT 6.2 Terra"),
 ];
