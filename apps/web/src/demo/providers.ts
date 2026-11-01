@@ -7,12 +7,30 @@ import {
   type ServerProviderModel,
 } from "@t3tools/contracts";
 
-const model = (slug: string, name: string) => ({
-  slug,
-  name,
-  isCustom: false,
-  capabilities: null,
-});
+const model = (slug: string, name: string) =>
+  ({
+    slug,
+    name,
+    isCustom: false,
+    capabilities: {
+      optionDescriptors: [
+        {
+          id: "reasoningEffort",
+          label: "Reasoning",
+          type: "select",
+          role: "reasoning",
+          currentValue: "medium",
+          options: [
+            { id: "low", label: "Low" },
+            { id: "medium", label: "Medium", isDefault: true },
+            { id: "high", label: "High" },
+            { id: "xhigh", label: "Extra High" },
+            { id: "max", label: "Max" },
+          ],
+        },
+      ],
+    },
+  }) satisfies ServerProviderModel;
 
 const codexModels = [
   model("gpt-6.2-sol", "GPT 6.2 Sol"),

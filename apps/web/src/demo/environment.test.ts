@@ -25,6 +25,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-workflows";
 import { derivePendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
 import { scenarios } from "./scenarios";
+import { getComposerReasoningStep } from "../components/chat/composerProviderState";
 
 const isProjection = Schema.is(OrchestrationV2ThreadProjection);
 const isShell = Schema.is(OrchestrationV2ShellSnapshot);
@@ -61,6 +62,24 @@ it.effect("launches an independent thread and completes a replay with tools and 
         expect(selectable.map((entry) => entry.instanceId)).toEqual(
           demoConfig.providers.map((provider) => provider.instanceId),
         );
+      }
+      for (const provider of demoConfig.providers) {
+        for (const model of provider.models) {
+          expect(
+            getComposerReasoningStep({
+              provider: provider.driver,
+              instanceId: provider.instanceId,
+              model: model.slug,
+              models: provider.models,
+              modelOptions: undefined,
+              prompt: "Fix the search",
+              cursor: 0,
+              planModeEnabled: true,
+              direction: 1,
+            })?.modelOptions,
+            `${provider.displayName}: ${model.name}`,
+          ).toEqual([{ id: "reasoningEffort", value: "high" }]);
+        }
       }
       const seeded = environment.getThread(DEMO_THREAD_ID).items;
       expect(
@@ -136,11 +155,15 @@ it.effect("launches an independent thread and completes a replay with tools and 
         modelSelection: {
           instanceId: ProviderInstanceId.make("opencode"),
           model: "gpt-6.2-terra",
+          options: [{ id: "reasoningEffort", value: "max" }],
         },
       });
       yield* Effect.promise(() => vi.runAllTimersAsync());
       const followUp = environment.getThread(id);
       expect(followUp.runs.at(-1)?.providerInstanceId).toBe("opencode");
+      expect(followUp.runs.at(-1)?.modelSelection.options).toEqual([
+        { id: "reasoningEffort", value: "max" },
+      ]);
       expect(followUp.runs[0]?.modelSelection).toEqual(completed.runs[0]?.modelSelection);
       expect(threadSupportsProviderHandoff(projectionOf(followUp))).toBe(true);
       expect(
